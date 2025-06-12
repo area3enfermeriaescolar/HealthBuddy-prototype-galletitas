@@ -1,0 +1,180 @@
+// src/firebase/firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Funciones de ayuda para validación
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    
+    function isStudent() {
+      return exists(/databases/$(database)/documents/users/students/$(request.auth.uid));
+    }
+    
+    function isProfessional() {
+      return exists(/databases/$(database)/documents/users/professionals/$(request.auth.uid));
+    }
+    
+    function isOwner(userId) {
+      return request.auth.uid == userId;
+    }
+    
+    function isAssignedToCenterAsStudent(centerId) {
+      return isStudent() && 
+        get(/databases/$(database)/documents/users/students/$(request.auth.uid)).data.centerIds.hasAny([centerId]);
+    }
+    
+    function isAssignedToCenterAsProfessional(centerId) {
+      return isProfessional() && 
+        get(/databases/$(database)/documents/users/professionals/$(request.auth.uid)).data.centerIds.hasAny([centerId]);
+    }
+    
+    function isRelatedToChat(chatData) {
+      return isStudent() && chatData.studentId == request.auth.uid || 
+             isProfessional() && chatData.professionalId == request.auth.uid;
+    }
+    
+    // Reglas para usuarios
+    match /users/students/{userId} {
+      // Estudiantes solo pueden leer/escribir su propio perfil
+      allow read: if isAuthenticated() && (isOwner(userId) || isProfessional());
+      allow write: if isAuthenticated() && isOwner(userId);
+      
+      // Campos sensibles solo visibles para el propio estudiante
+      function sanitizeStudentData() {
+        return isProfessional() ? {
+          nre: resource.data.nre,
+          alias: resource.data.alias,
+          centerIds: resource.data.centerIds,
+          course: resource.data.course,
+          age: resource.data.age,
+          gender: resource.data.gender,
+          createdAt: resource.data.createdAt
+        } : resource.data;
+      }
+    }
+    
+    match /users/professionals/{userId} {
+      // Profesionales pueden leer/escribir su propio perfil
+      allow read: if isAuthenticated() && (isOwner(userId) || isStudent());
+      allow write: if isAuthenticated() && isOwner(userId);
+      
+      // Estudiantes solo ven información básica de profesionales
+      function sanitizeProfessionalData() {
+        return isStudent() ? {
+          name: resource.data.name,
+          role: resource.data.role,
+          centerIds: resource.data.centerIds
+        } : resource.data;
+      }
+    }
+    
+    // Reglas para centros educativos
+    match /centers/{centerId} {
+      // Cualquier usuario autenticado puede leer información de centros
+      allow read: if isAuthenticated();
+      // Solo profesionales pueden modificar centros
+      allow write: if isAuthenticated() && isProfessional();
+    }
+    
+    // Reglas para citas
+    match /appointments/{appointmentId} {
+      // Usuarios pueden leer/escribir sus propias citas
+      allow read: if isAuthenticated() && (
+        isStudent() && resource.data.studentId == request.auth.uid ||
+        isProfessional() && resource.data.professionalId == request.auth.uid
+      );
+      
+      // Crear citas: estudiantes solo pueden crear para sí mismos
+      allow create: if isAuthenticated() && (
+        isStudent() && request.resource.data.studentId == request.auth.uid ||
+        isProfessional()
+      );
+      
+      // Actualizar citas: solo el estudiante o profesional relacionado
+      allow update: if isAuthenticated() && (
+        isStudent() && resource.data.studentId == request.auth.uid ||
+        isProfessional() && resource.data.professionalId == request.auth.uid
+      );
+      
+      // Eliminar citas: solo el profesional puede eliminar
+      allow delete: if isAuthenticated() && isProfessional() && 
+        resource.data.professionalId == request.auth.uid;
+    }
+    
+    // Reglas para disponibilidad
+    match /availability/{availabilityId} {
+      // Cualquier usuario autenticado puede leer disponibilidad
+      allow read: if isAuthenticated();
+      // Solo el profesional puede modificar su disponibilidad
+      allow write: if isAuthenticated() && isProfessional() && 
+        request.resource.data.professionalId == request.auth.uid;
+    }
+    
+    // Reglas para consultas
+    match /consultations/{consultationId} {
+      // Profesionales pueden leer todas las consultas
+      // Estudiantes solo pueden leer sus propias consultas
+      allow read: if isAuthenticated() && (
+        isProfessional() ||
+        isStudent() && resource.data.studentId == request.auth.uid
+      );
+      
+      // Solo profesionales pueden crear/actualizar consultas
+      allow create, update: if isAuthenticated() && isProfessional();
+      // Solo profesionales pueden eliminar consultas
+      allow delete: if isAuthenticated() && isProfessional();
+    }
+    
+    // Reglas para chats
+    match /chats/{chatId} {
+      // Solo participantes del chat pueden leer/escribir
+      allow read, write: if isAuthenticated() && isRelatedToChat(resource.data);
+      
+      // Reglas para mensajes dentro de un chat
+      match /messages/{messageId} {
+        // Solo participantes del chat pueden leer/escribir mensajes
+        allow read: if isAuthenticated() && isRelatedToChat(get(/databases/$(database)/documents/chats/$(chatId)).data);
+        allow create: if isAuthenticated() && isRelatedToChat(get(/databases/$(database)/documents/chats/$(chatId)).data) &&
+          (
+            isStudent() && request.resource.data.from == "student" ||
+            isProfessional() && request.resource.data.from == "professional"
+          );
+      }
+    }
+    
+    // Reglas para seguimiento de estado anímico
+    match /moodTracking/{trackingId} {
+      // Estudiantes solo pueden leer/escribir su propio seguimiento
+      // Profesionales pueden leer todos los seguimientos
+      allow read: if isAuthenticated() && (
+        isProfessional() ||
+        isStudent() && resource.data.studentId == request.auth.uid
+      );
+      
+      // Solo estudiantes pueden crear su propio seguimiento
+      allow create: if isAuthenticated() && isStudent() && 
+        request.resource.data.studentId == request.auth.uid;
+      
+      // Solo el estudiante puede actualizar su seguimiento
+      allow update: if isAuthenticated() && isStudent() && 
+        resource.data.studentId == request.auth.uid;
+    }
+    
+    // Reglas para recursos educativos
+    match /resources/{resourceId} {
+      // Cualquier usuario autenticado puede leer recursos
+      allow read: if isAuthenticated();
+      // Solo profesionales pueden crear/actualizar/eliminar recursos
+      allow write: if isAuthenticated() && isProfessional();
+    }
+    
+    // Reglas para auditoría
+    match /audit/{auditId} {
+      // Solo profesionales pueden leer registros de auditoría
+      allow read: if isAuthenticated() && isProfessional();
+      // Nadie puede modificar registros de auditoría directamente
+      allow write: if false;
+    }
+  }
+}

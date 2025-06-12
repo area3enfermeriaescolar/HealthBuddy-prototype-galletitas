@@ -1,0 +1,484 @@
+/* Estilos para la gestión de disponibilidad */
+.availability-tabs {
+  display: flex;
+  margin-bottom: 1.5rem;
+  background-color: white;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.tab-button {
+  flex: 1;
+  padding: 1rem;
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-button:hover {
+  background-color: #f5f5f5;
+}
+
+.tab-button.active {
+  background-color: #5ECCC3;
+  color: white;
+}
+
+/* Calendario de disponibilidad */
+.availability-calendar h2,
+.appointments-management h2,
+.consultation-history h2 {
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  color: #333;
+  font-size: 1.3rem;
+}
+
+.centers-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.center-card {
+  background-color: white;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.center-card h3 {
+  margin: 0;
+  margin-bottom: 1rem;
+  color: #1E5F8C;
+  font-size: 1.1rem;
+}
+
+.center-details {
+  margin-bottom: 1.5rem;
+}
+
+.center-details p {
+  margin: 0.5rem 0;
+  color: #555;
+}
+
+.center-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.modify-button,
+.notify-button {
+  flex: 1;
+  padding: 0.7rem;
+  border-radius: 50px;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modify-button {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.modify-button:hover {
+  background-color: #bbdefb;
+}
+
+.notify-button {
+  background-color: #5ECCC3;
+  color: white;
+}
+
+.notify-button:hover {
+  background-color: #4DBBB2;
+}
+
+.availability-actions {
+  text-align: center;
+  margin-top: 2rem;
+}
+
+.add-center-button {
+  background-color: #1E5F8C;
+  color: white;
+  border: none;
+  border-radius: 50px;
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.add-center-button:hover {
+  background-color: #174B70;
+  transform: translateY(-2px);
+}
+
+/* Gestión de citas */
+.appointments-filters,
+.history-filters {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  background-color: white;
+  border-radius: 10px;
+  padding: 1rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.filter-group label {
+  font-size: 0.9rem;
+  color: #555;
+  white-space: nowrap;
+}
+
+.filter-group select,
+.filter-group input {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 0.9rem;
+}
+
+.filter-button {
+  background-color: #5ECCC3;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.appointments-table,
+.history-table {
+  background-color: white;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th {
+  background-color: #f5f5f5;
+  padding: 0.8rem;
+  text-align: left;
+  font-size: 0.9rem;
+  color: #555;
+  font-weight: 600;
+}
+
+td {
+  padding: 0.8rem;
+  font-size: 0.9rem;
+  color: #333;
+  border-top: 1px solid #eee;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 0.3rem 0.8rem;
+  border-radius: 50px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.status-badge.confirmada {
+  background-color: #e8f5e9;
+  color: #388e3c;
+}
+
+.status-badge.pendiente {
+  background-color: #fff8e1;
+  color: #f57c00;
+}
+
+.appointment-actions,
+.history-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.action-button {
+  padding: 0.4rem 0.8rem;
+  border-radius: 5px;
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-button.register {
+  background-color: #5ECCC3;
+  color: white;
+}
+
+.action-button.register:hover {
+  background-color: #4DBBB2;
+}
+
+.action-button.cancel {
+  background-color: #ffebee;
+  color: #d32f2f;
+}
+
+.action-button.cancel:hover {
+  background-color: #ffcdd2;
+}
+
+.action-button.view {
+  background-color: #e3f2fd;
+  color: #1976d2;
+}
+
+.action-button.view:hover {
+  background-color: #bbdefb;
+}
+
+.action-button.edit {
+  background-color: #f5f5f5;
+  color: #616161;
+}
+
+.action-button.edit:hover {
+  background-color: #e0e0e0;
+}
+
+.notification-settings {
+  background-color: white;
+  border-radius: 10px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+}
+
+.notification-settings h3 {
+  margin: 0;
+  margin-bottom: 1rem;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.notification-option {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+}
+
+.notification-option label {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.export-actions {
+  text-align: right;
+  margin-top: 1.5rem;
+}
+
+.export-button {
+  background-color: #1E5F8C;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.export-button:hover {
+  background-color: #174B70;
+}
+
+/* Formulario de consulta */
+.consultation-form-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.consultation-form {
+  background-color: white;
+  border-radius: 15px;
+  padding: 2rem;
+  width: 90%;
+  max-width: 800px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+}
+
+.consultation-form h2 {
+  margin: 0;
+  margin-bottom: 1.5rem;
+  color: #1E5F8C;
+  font-size: 1.4rem;
+  text-align: center;
+}
+
+.form-section {
+  margin-bottom: 2rem;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 1.5rem;
+}
+
+.form-section:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.form-section h3 {
+  margin: 0;
+  margin-bottom: 1rem;
+  color: #333;
+  font-size: 1.1rem;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.form-group {
+  flex: 1;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.8rem;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  font-size: 0.9rem;
+}
+
+.form-group.full-width {
+  width: 100%;
+}
+
+.motives-row {
+  flex-wrap: wrap;
+}
+
+.form-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-right: 1.5rem;
+  margin-bottom: 0.8rem;
+}
+
+.form-check label {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+.derivation-alert {
+  background-color: #fff8e1;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.derivation-alert p {
+  margin: 0.5rem 0;
+  color: #f57c00;
+  font-size: 0.9rem;
+}
+
+.notify-orientation-button {
+  background-color: #f57c00;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  padding: 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 0.8rem;
+  transition: all 0.2s;
+}
+
+.notify-orientation-button:hover {
+  background-color: #ef6c00;
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  margin-top: 2rem;
+}
+
+.cancel-button,
+.save-button {
+  padding: 0.8rem 1.5rem;
+  border-radius: 50px;
+  border: none;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cancel-button {
+  background-color: #f5f5f5;
+  color: #666;
+}
+
+.cancel-button:hover {
+  background-color: #e0e0e0;
+}
+
+.save-button {
+  background-color: #5ECCC3;
+  color: white;
+}
+
+.save-button:hover {
+  background-color: #4DBBB2;
+  transform: translateY(-2px);
+}
