@@ -1,46 +1,163 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { NavBar, DemoBadge } from '../common/CommonComponents';
 import './StudentInterface.css';
+import { sendMessage, getChatMessages, createChat, getChatsForUser } from '../../services/chatService';
+import { useAuth } from '../../contexts/AuthContext';
 
 /**
- * StudentChat - Versión optimizada para móviles
+ * StudentChat - Versión optimizada para móviles con integración Firebase
  */
 function StudentChat({ onNavigate }) {
+  const { currentUser } = useAuth();
   const [selectedChat, setSelectedChat] = useState(null);
   const [newMessage, setNewMessage] = useState('');
+  const [messages, setMessages] = useState([]);
+  const [userChats, setUserChats] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
-  
-  // Datos de ejemplo - solo enfermera escolar
-  const chats = [
+
+  // Datos de ejemplo para modo demo (cuando no hay usuario autenticado)
+  const demoChats = [
     {
-      id: 1,
+      id: 'demo-chat-1',
       name: 'Lucía Martínez',
       role: 'Enfermera Escolar',
       avatar: '👩‍⚕️',
       unread: 2,
       lastActive: 'Hace 10 min',
-      messages: [
-        { from: 'nurse', text: 'Hola, ¿cómo te encuentras hoy?', time: '10:30' },
-        { from: 'student', text: 'Tengo algunas dudas sobre métodos anticonceptivos y no sé a quién preguntar.', time: '10:32' },
-        { from: 'nurse', text: 'Gracias por confiar en mí. Es un tema importante y perfectamente normal tener dudas. ¿Qué te gustaría saber específicamente?', time: '10:33' },
-        { from: 'nurse', text: 'Recuerda que toda nuestra conversación es confidencial.', time: '10:34' },
-      ]
+      participantIds: ['demo-student', 'demo-nurse'],
+      lastMessage: {
+        text: 'Recuerda que toda nuestra conversación es confidencial.',
+        timestamp: new Date()
+      }
     }
   ];
 
-  // Auto-scroll cuando llegan nuevos mensajes
+  const demoMessages = [
+    { 
+      id: '1',
+      senderId: 'demo-nurse', 
+      text: 'Hola, ¿cómo te encuentras hoy?', 
+      timestamp: new Date(Date.now() - 3600000),
+      senderName: 'Lucía Martínez'
+    },
+    { 
+      id: '2',
+      senderId: 'demo-student', 
+      text: 'Tengo algunas dudas sobre métodos anticonceptivos y no sé a quién preguntar.', 
+      timestamp: new Date(Date.now() - 3500000),
+      senderName: 'Estudiante'
+    },
+    { 
+      id: '3',
+      senderId: 'demo-nurse', 
+      text: 'Gracias por confiar en mí. Es un tema importante y perfectamente normal tener dudas. ¿Qué te gustaría saber específicamente?', 
+      timestamp: new Date(Date.now() - 3400000),
+      senderName: 'Lucía Martínez'
+    },
+    { 
+      id: '4',
+      senderId: 'demo-nurse', 
+      text: 'Recuerda que toda nuestra conversación es confidencial.', 
+      timestamp: new Date(Date.now() - 3300000),
+      senderName: 'Lucía Martínez'
+    },
+  ];
+
+  // Cargar chats del usuario
+  useEffect(() => {
+    if (currentUser) {
+      setLoading(true);
+      const unsubscribeChats = getChatsForUser(currentUser.uid, (chats) => {
+        setUserChats(chats);
+        setLoading(false);
+        
+        // Seleccionar el primer chat por defecto si existe
+        if (!selectedChat && chats.length > 0) {
+          setSelectedChat(chats[0]);
+        }
+      }, (err) => {
+        console.error('Error loading chats:', err);
+        setError('Error al cargar las conversaciones');
+        setLoading(false);
+      });
+
+      return () => unsubscribeChats();
+    } else {
+      // Modo demo sin autenticación
+      setUserChats(demoChats);
+      setLoading(false);
+    }
+  }, [currentUser]);
+
+  // Cargar mensajes del chat seleccionado
   useEffect(() => {
     if (selectedChat) {
+      if (currentUser) {
+        const unsubscribeMessages = getChatMessages(selectedChat.id, (msgs) => {
+          setMessages(msgs);
+        }, (err) => {
+          console.error('Error loading messages:', err);
+          setError('Error al cargar los mensajes');
+        });
+
+        return () => unsubscribeMessages();
+      } else {
+        // Modo demo
+        setMessages(demoMessages);
+      }
+    }
+  }, [selectedChat, currentUser]);
+
+  // Auto-scroll cuando llegan nuevos mensajes
+  useEffect(() => {
+    if (selectedChat && messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [selectedChat, chats.find(c => c.id === selectedChat)?.messages]);
+  }, [selectedChat, messages]);
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!newMessage.trim()) return;
-    // Simular envío de mensaje
-    console.log("Mensaje enviado:", newMessage);
-    setNewMessage('');
+    
+    if (currentUser && selectedChat) {
+      try {
+        // Obtener el ID del otro participante (profesional)
+        const receiverId = selectedChat.participantIds.find(id => id !== currentUser.uid);
+        
+        await sendMessage(
+          selectedChat.id,
+          currentUser.uid,
+          receiverId,
+          newMessage.trim()
+        );
+        
+        setNewMessage('');
+        setError(null);
+      } catch (error) {
+        console.error('Error al enviar mensaje:', error);
+        setError('Error al enviar el mensaje. Inténtalo de nuevo.');
+      }
+    } else {
+      // Modo demo - simular envío
+      console.log("Mensaje enviado (demo):", newMessage);
+      setNewMessage('');
+      
+      // Simular respuesta automática después de un tiempo
+      setTimeout(() => {
+        const responses = [
+          "Gracias por tu mensaje. Te responderé pronto.",
+          "Entiendo tu consulta. ¿Podrías darme más detalles?",
+          "Esa es una muy buena pregunta. Déjame explicarte...",
+        ];
+        const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+        
+        // En una implementación real, esto vendría del servidor
+        console.log("Respuesta automática (demo):", randomResponse);
+      }, 2000);
+    }
+    
     setTimeout(() => {
       inputRef.current?.focus();
     }, 0);
@@ -54,7 +171,40 @@ function StudentChat({ onNavigate }) {
     }
   };
 
-  // CSS para agregar directamente en la página
+  // Crear nuevo chat con profesional
+  const handleCreateNewChat = async (professionalId) => {
+    if (!currentUser) {
+      console.log('Modo demo: no se puede crear chat real');
+      return;
+    }
+
+    try {
+      const newChatId = await createChat([currentUser.uid, professionalId]);
+      // El chat se añadirá automáticamente a userChats a través del listener
+      setError(null);
+    } catch (error) {
+      console.error('Error al crear chat:', error);
+      setError('Error al iniciar la conversación');
+    }
+  };
+
+  // Formatear tiempo para mostrar
+  const formatTime = (timestamp) => {
+    if (!timestamp) return '';
+    
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
+  // Determinar si el mensaje es del usuario actual
+  const isOwnMessage = (message) => {
+    if (!currentUser) {
+      return message.senderId === 'demo-student';
+    }
+    return message.senderId === currentUser.uid;
+  };
+
+  // CSS para agregar directamente en la página (manteniendo el CSS original)
   const inlineStyles = `
     /* Estilos básicos garantizados para móviles */
     .app-chat-container {
@@ -145,6 +295,7 @@ function StudentChat({ onNavigate }) {
       display: flex;
       width: 100%;
       box-sizing: border-box;
+      cursor: pointer;
     }
     
     .app-message-item.unread {
@@ -241,6 +392,24 @@ function StudentChat({ onNavigate }) {
     
     .app-message-preview.unread {
       color: #002D3A;
+    }
+    
+    .app-error {
+      margin: 12px;
+      padding: 12px;
+      background-color: #ffebee;
+      border-radius: 8px;
+      border-left: 4px solid #d32f2f;
+      color: #d32f2f;
+      font-size: 0.9rem;
+    }
+    
+    .app-loading {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+      color: #4A6572;
     }
     
     /* Chat individual */
@@ -458,6 +627,18 @@ function StudentChat({ onNavigate }) {
     };
   }, []);
 
+  if (loading) {
+    return (
+      <div className="app-chat-container">
+        <DemoBadge />
+        <div className="app-loading">
+          <span>Cargando conversaciones...</span>
+        </div>
+        <NavBar active="chat" onNavigate={onNavigate} userType="student" />
+      </div>
+    );
+  }
+
   if (!selectedChat) {
     // Vista de lista de mensajes
     return (
@@ -470,6 +651,12 @@ function StudentChat({ onNavigate }) {
             <p className="app-message-subtitle">Consulta con profesionales sanitarios</p>
           </div>
           
+          {error && (
+            <div className="app-error">
+              {error}
+            </div>
+          )}
+          
           <div className="app-message-info">
             <p className="app-message-info-title">
               Horario de atención: Lunes - Viernes, 08:00 - 15:00
@@ -480,41 +667,63 @@ function StudentChat({ onNavigate }) {
           </div>
           
           <div className="app-message-list">
-            {chats.map((chat) => (
-              <div 
-                key={chat.id}
-                className={`app-message-item ${chat.unread ? 'unread' : ''}`}
-                onClick={() => setSelectedChat(chat.id)}
-              >
-                <div className={`app-message-avatar ${chat.unread ? 'unread' : ''}`}>
-                  {chat.avatar}
-                </div>
-                
-                <div className="app-message-content">
-                  <div className="app-message-header-row">
-                    <div>
-                      <h3 className={`app-message-name ${chat.unread ? 'unread' : ''}`}>
-                        {chat.name}
-                      </h3>
-                      <p className="app-message-role">{chat.role}</p>
+            {userChats.length === 0 ? (
+              <div style={{ 
+                textAlign: 'center', 
+                padding: '40px 20px', 
+                color: '#4A6572' 
+              }}>
+                <p>No tienes conversaciones activas.</p>
+                <p style={{ fontSize: '0.9rem' }}>
+                  {currentUser 
+                    ? 'Contacta con un profesional sanitario para iniciar una consulta.'
+                    : 'En modo demo se muestra una conversación de ejemplo.'
+                  }
+                </p>
+              </div>
+            ) : (
+              userChats.map((chat) => {
+                const hasUnread = chat.unread || (chat.lastMessage && !chat.lastMessage.read);
+                const lastMessageText = chat.lastMessage ? chat.lastMessage.text : 'No hay mensajes';
+                const lastActiveTime = chat.lastMessage 
+                  ? formatTime(chat.lastMessage.timestamp)
+                  : chat.lastActive || '';
+
+                return (
+                  <div 
+                    key={chat.id}
+                    className={`app-message-item ${hasUnread ? 'unread' : ''}`}
+                    onClick={() => setSelectedChat(chat)}
+                  >
+                    <div className={`app-message-avatar ${hasUnread ? 'unread' : ''}`}>
+                      {chat.avatar || '👩‍⚕️'}
                     </div>
                     
-                    <div className="app-message-meta">
-                      <span className="app-message-time">{chat.lastActive}</span>
-                      {chat.unread > 0 && (
-                        <div className="app-message-badge">{chat.unread}</div>
-                      )}
+                    <div className="app-message-content">
+                      <div className="app-message-header-row">
+                        <div>
+                          <h3 className={`app-message-name ${hasUnread ? 'unread' : ''}`}>
+                            {chat.name || 'Profesional Sanitario'}
+                          </h3>
+                          <p className="app-message-role">{chat.role || 'Profesional de la Salud'}</p>
+                        </div>
+                        
+                        <div className="app-message-meta">
+                          <span className="app-message-time">{lastActiveTime}</span>
+                          {hasUnread && (
+                            <div className="app-message-badge">!</div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      <p className={`app-message-preview ${hasUnread ? 'unread' : ''}`}>
+                        {lastMessageText}
+                      </p>
                     </div>
                   </div>
-                  
-                  {chat.messages.length > 0 && (
-                    <p className={`app-message-preview ${chat.unread ? 'unread' : ''}`}>
-                      {chat.messages[chat.messages.length - 1].text}
-                    </p>
-                  )}
-                </div>
-              </div>
-            ))}
+                );
+              })
+            )}
           </div>
         </div>
         
@@ -524,7 +733,7 @@ function StudentChat({ onNavigate }) {
   }
 
   // Vista de chat individual
-  const currentChat = chats.find(c => c.id === selectedChat);
+  const currentChat = selectedChat;
   
   return (
     <div className="app-chat-container">
@@ -536,14 +745,20 @@ function StudentChat({ onNavigate }) {
         </button>
         
         <div className="app-chat-profile">
-          <div className="app-chat-avatar">{currentChat?.avatar}</div>
+          <div className="app-chat-avatar">{currentChat?.avatar || '👩‍⚕️'}</div>
           
           <div className="app-chat-info">
-            <h3 className="app-chat-name">{currentChat?.name}</h3>
-            <p className="app-chat-role">{currentChat?.role}</p>
+            <h3 className="app-chat-name">{currentChat?.name || 'Profesional Sanitario'}</h3>
+            <p className="app-chat-role">{currentChat?.role || 'Profesional de la Salud'}</p>
           </div>
         </div>
       </div>
+      
+      {error && (
+        <div className="app-error">
+          {error}
+        </div>
+      )}
       
       <div className="app-chat-privacy">
         <div className="app-chat-privacy-icon">🔒</div>
@@ -556,25 +771,30 @@ function StudentChat({ onNavigate }) {
       </div>
       
       <div className="app-chat-messages">
-        {currentChat?.messages.map((msg, idx) => (
-          <div 
-            key={idx}
-            className={`app-chat-message ${msg.from === 'student' ? 'outgoing' : 'incoming'}`}
-          >
-            {msg.from !== 'student' && (
-              <div className="app-chat-message-avatar">
-                {currentChat?.avatar}
+        {messages.map((msg, idx) => {
+          const isOwn = isOwnMessage(msg);
+          return (
+            <div 
+              key={msg.id || idx}
+              className={`app-chat-message ${isOwn ? 'outgoing' : 'incoming'}`}
+            >
+              {!isOwn && (
+                <div className="app-chat-message-avatar">
+                  {currentChat?.avatar || '👩‍⚕️'}
+                </div>
+              )}
+              
+              <div>
+                <div className={`app-chat-bubble ${isOwn ? 'outgoing' : 'incoming'}`}>
+                  {msg.text}
+                </div>
+                <div className="app-chat-time">
+                  {formatTime(msg.timestamp)}
+                </div>
               </div>
-            )}
-            
-            <div>
-              <div className={`app-chat-bubble ${msg.from === 'student' ? 'outgoing' : 'incoming'}`}>
-                {msg.text}
-              </div>
-              <div className="app-chat-time">{msg.time}</div>
             </div>
-          </div>
-        ))}
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
       
@@ -587,11 +807,12 @@ function StudentChat({ onNavigate }) {
           onKeyPress={handleKeyPress}
           placeholder="Escribe un mensaje..."
           rows={1}
+          disabled={!!error}
         />
         <button
           className="app-chat-send"
           onClick={handleSendMessage}
-          disabled={!newMessage.trim()}
+          disabled={!newMessage.trim() || !!error}
         >
           ↑
         </button>

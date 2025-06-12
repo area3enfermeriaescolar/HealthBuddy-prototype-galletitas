@@ -1,10 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import ProfessionalLayout from './ProfessionalLayout';
+import { getAppointmentsByProfessional, updateAppointmentStatus } from '../../services/appointmentService';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Función para formatear fecha de yyyy-mm-dd a dd/mm/yyyy
 const formatDateForDisplay = (dateString) => {
-  const [year, month, day] = dateString.split('-');
-  return `${day}/${month}/${year}`;
+  if (!dateString) return '';
+  
+  // Si es un timestamp de Firebase
+  if (dateString.seconds) {
+    const date = new Date(dateString.seconds * 1000);
+    return date.toLocaleDateString('es-ES');
+  }
+  
+  // Si es una fecha normal
+  if (dateString instanceof Date) {
+    return dateString.toLocaleDateString('es-ES');
+  }
+  
+  // Si es string en formato yyyy-mm-dd
+  if (typeof dateString === 'string' && dateString.includes('-')) {
+    const [year, month, day] = dateString.split('-');
+    return `${day}/${month}/${year}`;
+  }
+  
+  return dateString;
 };
 
 // Función para obtener fecha en formato dd/mm/yyyy para mostrar en las secciones
@@ -14,91 +34,22 @@ const getDateSectionTitle = (dateString) => {
   tomorrow.setDate(tomorrow.getDate() + 1);
   const tomorrowString = tomorrow.toISOString().split('T')[0];
   
-  if (dateString === today) {
+  // Convertir timestamp de Firebase a string de fecha si es necesario
+  let compareDateString = dateString;
+  if (dateString && dateString.seconds) {
+    const date = new Date(dateString.seconds * 1000);
+    compareDateString = date.toISOString().split('T')[0];
+  } else if (dateString instanceof Date) {
+    compareDateString = dateString.toISOString().split('T')[0];
+  }
+  
+  if (compareDateString === today) {
     return `Hoy - ${formatDateForDisplay(dateString)}`;
-  } else if (dateString === tomorrowString) {
+  } else if (compareDateString === tomorrowString) {
     return `Mañana - ${formatDateForDisplay(dateString)}`;
   } else {
     return formatDateForDisplay(dateString);
   }
-};
-
-// Funciones simuladas para la demo
-const getProfessionalAppointments = () => {
-  // Datos de ejemplo para la demo
-  const today = new Date();
-  const tomorrow = new Date(today);
-  tomorrow.setDate(today.getDate() + 1);
-  
-  const formatDate = (date) => {
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-  };
-  
-  const mockAppointments = [
-    {
-      id: 2001,
-      nre: '30012345',
-      studentName: 'NRE: 30012345',
-      date: formatDate(today),
-      time: '10:30',
-      duration: 30,
-      center: 'IES Ibáñez Martín',
-      status: 'pending',
-      type: 'presencial',
-      reason: 'Consulta general'
-    },
-    {
-      id: 2002,
-      nre: '30023456',
-      studentName: 'NRE: 30023456',
-      date: formatDate(today),
-      time: '11:15',
-      duration: 30,
-      center: 'IES Ibáñez Martín',
-      status: 'pending',
-      type: 'presencial',
-      reason: 'Seguimiento'
-    },
-    {
-      id: 2003,
-      nre: '30045678',
-      studentName: 'NRE: 30045678',
-      date: formatDate(tomorrow),
-      time: '09:30',
-      duration: 30,
-      center: 'IES Mediterráneo',
-      status: 'pending',
-      type: 'presencial',
-      reason: 'Primera consulta'
-    },
-    {
-      id: 2004,
-      nre: '30056789',
-      studentName: 'NRE: 30056789',
-      date: formatDate(tomorrow),
-      time: '10:15',
-      duration: 30,
-      center: 'IES Mediterráneo',
-      status: 'pending',
-      type: 'virtual',
-      reason: 'Consulta nutricional'
-    }
-  ];
-  
-  return {
-    success: true,
-    data: mockAppointments
-  };
-};
-
-const updateAppointmentStatus = (appointmentId, status) => {
-  // En una implementación real, aquí se actualizaría el estado en el backend
-  console.log(`Actualizando cita ${appointmentId} a estado: ${status}`);
-  
-  return {
-    success: true,
-    message: 'Estado de la cita actualizado correctamente'
-  };
 };
 
 // Demo badge inline
@@ -136,9 +87,10 @@ const COLORS = {
 };
 
 // Componente de Tarjeta de Cita (más responsive para móviles)
-const AppointmentCard = ({ appointment, onStatusChange }) => {
+const AppointmentCard = ({ appointment, onStatusChange, isUpdating }) => {
   const getStatusColor = (status) => {
     switch (status) {
+      case 'confirmed':
       case 'completed':
         return COLORS.accent;
       case 'cancelled':
@@ -152,6 +104,8 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
   
   const getStatusLabel = (status) => {
     switch (status) {
+      case 'confirmed':
+        return 'Confirmada';
       case 'completed':
         return 'Completada';
       case 'cancelled':
@@ -169,7 +123,9 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
       borderRadius: 12,
       padding: 16,
       marginBottom: 12,
-      boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+      boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+      opacity: isUpdating === appointment.id ? 0.6 : 1,
+      transition: 'opacity 0.3s ease',
     }}>
       <div style={{ 
         display: 'flex', 
@@ -179,8 +135,12 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
         flexWrap: 'wrap'
       }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: 16, color: COLORS.textDark }}>{appointment.studentName}</h3>
-          <p style={{ margin: '4px 0 0 0', fontSize: 14, color: COLORS.textMedium }}>{appointment.center}</p>
+          <h3 style={{ margin: 0, fontSize: 16, color: COLORS.textDark }}>
+            {appointment.studentName || `NRE: ${appointment.studentId}`}
+          </h3>
+          <p style={{ margin: '4px 0 0 0', fontSize: 14, color: COLORS.textMedium }}>
+            {appointment.center || appointment.location || 'Centro no especificado'}
+          </p>
         </div>
         <div style={{
           background: `${getStatusColor(appointment.status)}10`,
@@ -235,9 +195,34 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
           alignItems: 'center',
           gap: 4
         }}>
-          <span>{appointment.type === 'presencial' ? '🏥' : '💻'}</span> {appointment.type}
+          <span>{appointment.type === 'presencial' ? '🏥' : '💻'}</span> 
+          {appointment.type || 'presencial'}
         </div>
       </div>
+      
+      {/* Mostrar motivo de la cita */}
+      <div style={{ 
+        fontSize: 14, 
+        color: COLORS.textMedium,
+        marginBottom: 12
+      }}>
+        <span style={{ fontWeight: 500 }}>Motivo:</span> {appointment.reason || 'No especificado'}
+      </div>
+
+      {/* Mostrar notas si existen */}
+      {appointment.notes && (
+        <div style={{ 
+          fontSize: 13, 
+          color: COLORS.textMedium,
+          marginBottom: 12,
+          fontStyle: 'italic',
+          background: '#f9f9f9',
+          padding: 8,
+          borderRadius: 6,
+        }}>
+          <span style={{ fontWeight: 500 }}>Notas:</span> "{appointment.notes}"
+        </div>
+      )}
       
       <div style={{ 
         display: 'flex', 
@@ -247,11 +232,15 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
         gap: window.innerWidth < 480 ? 10 : 0
       }}>
         <div style={{ 
-          fontSize: 14, 
+          fontSize: 12, 
           color: COLORS.textMedium,
           marginBottom: window.innerWidth < 480 ? 8 : 0
         }}>
-          <span style={{ fontWeight: 500 }}>Motivo:</span> {appointment.reason}
+          {appointment.createdAt && (
+            <span>
+              Solicitada: {new Date(appointment.createdAt.seconds * 1000).toLocaleDateString('es-ES')}
+            </span>
+          )}
         </div>
         
         <div style={{ 
@@ -262,7 +251,8 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
           {appointment.status === 'pending' && (
             <>
               <button 
-                onClick={() => onStatusChange(appointment.id, 'completed')}
+                onClick={() => onStatusChange(appointment.id, 'confirmed')}
+                disabled={isUpdating === appointment.id}
                 style={{
                   background: COLORS.accent,
                   color: 'white',
@@ -270,14 +260,16 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
                   borderRadius: 8,
                   padding: '6px 12px',
                   fontSize: 13,
-                  cursor: 'pointer',
-                  flex: window.innerWidth < 480 ? 1 : 'none'
+                  cursor: isUpdating === appointment.id ? 'not-allowed' : 'pointer',
+                  flex: window.innerWidth < 480 ? 1 : 'none',
+                  opacity: isUpdating === appointment.id ? 0.6 : 1,
                 }}
               >
-                Completar
+                {isUpdating === appointment.id ? '...' : 'Confirmar'}
               </button>
               <button 
                 onClick={() => onStatusChange(appointment.id, 'cancelled')}
+                disabled={isUpdating === appointment.id}
                 style={{
                   background: COLORS.danger,
                   color: 'white',
@@ -285,29 +277,72 @@ const AppointmentCard = ({ appointment, onStatusChange }) => {
                   borderRadius: 8,
                   padding: '6px 12px',
                   fontSize: 13,
-                  cursor: 'pointer',
-                  flex: window.innerWidth < 480 ? 1 : 'none'
+                  cursor: isUpdating === appointment.id ? 'not-allowed' : 'pointer',
+                  flex: window.innerWidth < 480 ? 1 : 'none',
+                  opacity: isUpdating === appointment.id ? 0.6 : 1,
                 }}
               >
-                Cancelar
+                {isUpdating === appointment.id ? '...' : 'Rechazar'}
               </button>
             </>
           )}
-          {appointment.status !== 'pending' && (
+          
+          {appointment.status === 'confirmed' && (
+            <>
+              <button 
+                onClick={() => onStatusChange(appointment.id, 'completed')}
+                disabled={isUpdating === appointment.id}
+                style={{
+                  background: COLORS.primary,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  cursor: isUpdating === appointment.id ? 'not-allowed' : 'pointer',
+                  flex: window.innerWidth < 480 ? 1 : 'none',
+                  opacity: isUpdating === appointment.id ? 0.6 : 1,
+                }}
+              >
+                {isUpdating === appointment.id ? '...' : 'Completar'}
+              </button>
+              <button 
+                onClick={() => onStatusChange(appointment.id, 'cancelled')}
+                disabled={isUpdating === appointment.id}
+                style={{
+                  background: COLORS.danger,
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: 8,
+                  padding: '6px 12px',
+                  fontSize: 13,
+                  cursor: isUpdating === appointment.id ? 'not-allowed' : 'pointer',
+                  flex: window.innerWidth < 480 ? 1 : 'none',
+                  opacity: isUpdating === appointment.id ? 0.6 : 1,
+                }}
+              >
+                {isUpdating === appointment.id ? '...' : 'Cancelar'}
+              </button>
+            </>
+          )}
+          
+          {(appointment.status === 'completed' || appointment.status === 'cancelled') && (
             <button 
               onClick={() => onStatusChange(appointment.id, 'pending')}
+              disabled={isUpdating === appointment.id}
               style={{
-                background: COLORS.primary,
+                background: COLORS.warning,
                 color: 'white',
                 border: 'none',
                 borderRadius: 8,
                 padding: '6px 12px',
                 fontSize: 13,
-                cursor: 'pointer',
-                width: window.innerWidth < 480 ? '100%' : 'auto'
+                cursor: isUpdating === appointment.id ? 'not-allowed' : 'pointer',
+                width: window.innerWidth < 480 ? '100%' : 'auto',
+                opacity: isUpdating === appointment.id ? 0.6 : 1,
               }}
             >
-              Reactivar
+              {isUpdating === appointment.id ? '...' : 'Reactivar'}
             </button>
           )}
         </div>
@@ -321,6 +356,7 @@ const AppointmentFilters = ({ activeFilter, onFilterChange }) => {
   const filters = [
     { id: 'all', label: 'Todas' },
     { id: 'pending', label: 'Pendientes' },
+    { id: 'confirmed', label: 'Confirmadas' },
     { id: 'completed', label: 'Completadas' },
     { id: 'cancelled', label: 'Canceladas' }
   ];
@@ -352,7 +388,7 @@ const AppointmentFilters = ({ activeFilter, onFilterChange }) => {
             cursor: 'pointer',
             whiteSpace: 'nowrap',
             flex: isSmallScreen ? '1 0 auto' : 'none',
-            minWidth: isSmallScreen ? '45%' : 'auto',
+            minWidth: isSmallScreen ? '30%' : 'auto',
             textAlign: 'center',
             marginBottom: isSmallScreen ? 4 : 0
           }}
@@ -364,13 +400,17 @@ const AppointmentFilters = ({ activeFilter, onFilterChange }) => {
   );
 };
 
-// Componente Principal de Citas
+// Componente Principal de Citas con integración Firebase
 const ProfessionalAppointments = ({ onNavigate }) => {
+  const { currentUser } = useAuth();
+  
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [windowWidth, setWindowWidth] = useState(window.innerWidth);
+  const [error, setError] = useState(null);
+  const [updatingAppointment, setUpdatingAppointment] = useState(null);
   
   // Efecto para detectar cambios en el ancho de la ventana
   useEffect(() => {
@@ -384,64 +424,127 @@ const ProfessionalAppointments = ({ onNavigate }) => {
     };
   }, []);
   
-  // Cargar citas al montar el componente
+  // Cargar citas del profesional desde Firebase
   useEffect(() => {
-    const fetchAppointments = async () => {
-      try {
-        const result = getProfessionalAppointments();
-        if (result.success) {
-          setAppointments(result.data);
-        }
-      } catch (error) {
-        console.error('Error al cargar citas:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-    
-    fetchAppointments();
-  }, []);
-  
-  // Manejar cambio de estado de cita
-  const handleStatusChange = (appointmentId, newStatus) => {
+    if (!currentUser) {
+      setLoading(false);
+      setError('Debe iniciar sesión para ver las citas');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
     try {
-      const result = updateAppointmentStatus(appointmentId, newStatus);
-      
-      if (result.success) {
-        // Actualizar estado local
-        setAppointments(appointments.map(appointment => 
-          appointment.id === appointmentId 
-            ? { ...appointment, status: newStatus } 
-            : appointment
-        ));
+      // Aquí usamos el ID del profesional actual
+      // En un caso real, podrías tener el professionalId en el perfil del usuario
+      const professionalId = currentUser.uid; // o currentUser.professionalId si lo tienes
+
+      const unsubscribe = getAppointmentsByProfessional(professionalId, (appointmentsData) => {
+        console.log('Citas recibidas:', appointmentsData);
+        setAppointments(appointmentsData);
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.error('Error al cargar citas del profesional:', err);
+      setError('Error al cargar las citas');
+      setLoading(false);
+    }
+  }, [currentUser]);
+  
+  // Manejar cambio de estado de cita con Firebase
+  const handleStatusChange = async (appointmentId, newStatus) => {
+    if (!appointmentId || !newStatus) {
+      console.error('ID de cita o nuevo estado no válido');
+      return;
+    }
+
+    // Confirmar acción para cambios críticos
+    const criticalActions = ['cancelled', 'completed'];
+    if (criticalActions.includes(newStatus)) {
+      const actionText = newStatus === 'cancelled' ? 'cancelar' : 'completar';
+      if (!window.confirm(`¿Está seguro de que desea ${actionText} esta cita?`)) {
+        return;
       }
-    } catch (error) {
-      console.error('Error al actualizar estado de cita:', error);
+    }
+
+    setUpdatingAppointment(appointmentId);
+    setError(null);
+
+    try {
+      await updateAppointmentStatus(appointmentId, newStatus);
+      
+      // Mostrar mensaje de éxito
+      console.log(`Cita ${appointmentId} actualizada a estado: ${newStatus}`);
+      
+      // La UI se actualizará automáticamente gracias al listener en tiempo real
+    } catch (err) {
+      console.error('Error al actualizar estado de cita:', err);
+      setError(`Error al actualizar la cita: ${err.message}`);
+    } finally {
+      setUpdatingAppointment(null);
     }
   };
   
   // Filtrar citas según filtro activo y término de búsqueda
   const filteredAppointments = appointments.filter(appointment => {
     const matchesFilter = activeFilter === 'all' || appointment.status === activeFilter;
-    const matchesSearch = searchTerm === '' || 
-      appointment.studentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.center.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appointment.reason.toLowerCase().includes(searchTerm.toLowerCase());
     
-    return matchesFilter && matchesSearch;
+    if (!matchesFilter) return false;
+    
+    if (searchTerm === '') return true;
+    
+    const searchLower = searchTerm.toLowerCase();
+    const studentName = (appointment.studentName || '').toLowerCase();
+    const studentId = (appointment.studentId || '').toLowerCase();
+    const center = (appointment.center || appointment.location || '').toLowerCase();
+    const reason = (appointment.reason || '').toLowerCase();
+    const notes = (appointment.notes || '').toLowerCase();
+    
+    return studentName.includes(searchLower) ||
+           studentId.includes(searchLower) ||
+           center.includes(searchLower) ||
+           reason.includes(searchLower) ||
+           notes.includes(searchLower);
   });
   
   // Agrupar citas por fecha
   const groupedAppointments = filteredAppointments.reduce((groups, appointment) => {
-    if (!groups[appointment.date]) {
-      groups[appointment.date] = [];
+    let dateKey;
+    
+    // Manejar diferentes tipos de fecha
+    if (appointment.date && appointment.date.seconds) {
+      // Timestamp de Firebase
+      const date = new Date(appointment.date.seconds * 1000);
+      dateKey = date.toISOString().split('T')[0];
+    } else if (appointment.date instanceof Date) {
+      // Objeto Date
+      dateKey = appointment.date.toISOString().split('T')[0];
+    } else if (typeof appointment.date === 'string') {
+      // String de fecha
+      dateKey = appointment.date.includes('T') ? 
+        appointment.date.split('T')[0] : 
+        appointment.date;
+    } else {
+      // Fallback
+      dateKey = 'fecha-desconocida';
     }
-    groups[appointment.date].push(appointment);
+    
+    if (!groups[dateKey]) {
+      groups[dateKey] = [];
+    }
+    groups[dateKey].push(appointment);
     return groups;
   }, {});
   
   // Ordenar fechas
-  const sortedDates = Object.keys(groupedAppointments).sort();
+  const sortedDates = Object.keys(groupedAppointments).sort((a, b) => {
+    if (a === 'fecha-desconocida') return 1;
+    if (b === 'fecha-desconocida') return -1;
+    return new Date(a) - new Date(b);
+  });
   
   const handleBack = () => {
     onNavigate('dashboard');
@@ -449,6 +552,31 @@ const ProfessionalAppointments = ({ onNavigate }) => {
   
   // Determinar si la pantalla es pequeña
   const isSmallScreen = windowWidth < 480;
+
+  // Mostrar error de autenticación
+  if (!currentUser) {
+    return (
+      <ProfessionalLayout 
+        title="Acceso Denegado" 
+        onBack={handleBack}
+        activeScreen="appointments"
+        onNavigate={onNavigate}
+      >
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '30px 0', 
+          color: COLORS.error,
+          background: 'white',
+          borderRadius: 12,
+          marginTop: 16
+        }}>
+          <div style={{ fontSize: 40, marginBottom: 16 }}>🔒</div>
+          <h3>Acceso no autorizado</h3>
+          <p>Debe iniciar sesión como profesional para ver las citas.</p>
+        </div>
+      </ProfessionalLayout>
+    );
+  }
   
   return (
     <ProfessionalLayout 
@@ -458,13 +586,34 @@ const ProfessionalAppointments = ({ onNavigate }) => {
       onNavigate={onNavigate}
     >
       <DemoBadge />
+
+      {/* Mostrar errores */}
+      {error && (
+        <div style={{
+          background: '#ffebee',
+          borderLeft: `4px solid ${COLORS.danger}`,
+          color: COLORS.danger,
+          padding: '1rem',
+          borderRadius: 8,
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10
+        }}>
+          <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+          <div>
+            <p style={{ margin: 0, fontWeight: 500 }}>Error</p>
+            <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.9rem' }}>{error}</p>
+          </div>
+        </div>
+      )}
       
       <div style={{ position: 'relative', marginBottom: 16 }}>
         <input
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Buscar por NRE, centro, motivo..."
+          placeholder="Buscar por estudiante, NRE, centro, motivo..."
           style={{
             width: '100%',
             padding: '10px 16px 10px 40px',
@@ -508,13 +657,60 @@ const ProfessionalAppointments = ({ onNavigate }) => {
         onFilterChange={setActiveFilter} 
       />
       
+      {/* Estadísticas rápidas */}
+      {!loading && appointments.length > 0 && (
+        <div style={{
+          display: 'flex',
+          gap: 12,
+          marginBottom: 20,
+          flexWrap: 'wrap'
+        }}>
+          {[
+            { status: 'pending', label: 'Pendientes', color: COLORS.warning },
+            { status: 'confirmed', label: 'Confirmadas', color: COLORS.primary },
+            { status: 'completed', label: 'Completadas', color: COLORS.accent },
+          ].map(stat => {
+            const count = appointments.filter(apt => apt.status === stat.status).length;
+            return (
+              <div 
+                key={stat.status}
+                style={{
+                  background: 'white',
+                  borderRadius: 8,
+                  padding: '8px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 8,
+                  flex: 1,
+                  minWidth: 'fit-content',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                }}
+              >
+                <div style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  background: stat.color
+                }} />
+                <span style={{ fontSize: 13, color: COLORS.textMedium }}>
+                  {stat.label}: <strong>{count}</strong>
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      
       {loading ? (
         <div style={{ 
           textAlign: 'center', 
           padding: '30px 0', 
-          color: COLORS.textMedium 
+          color: COLORS.textMedium,
+          background: 'white',
+          borderRadius: 12,
         }}>
-          Cargando citas...
+          <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
+          <p>Cargando citas...</p>
         </div>
       ) : filteredAppointments.length === 0 ? (
         <div style={{ 
@@ -526,8 +722,16 @@ const ProfessionalAppointments = ({ onNavigate }) => {
           marginTop: 16
         }}>
           <div style={{ fontSize: 40, marginBottom: 16 }}>📅</div>
-          <p>No se encontraron citas {activeFilter !== 'all' && `con estado "${activeFilter}"`}</p>
-          {searchTerm && <p>con el término de búsqueda "{searchTerm}"</p>}
+          <h3 style={{ margin: '0 0 8px 0', color: COLORS.textDark }}>
+            {appointments.length === 0 ? 
+              'No hay citas programadas' : 
+              'No se encontraron citas'
+            }
+          </h3>
+          <p style={{ margin: '0 0 16px 0' }}>
+            {activeFilter !== 'all' && `con estado "${activeFilter}" `}
+            {searchTerm && `que coincidan con "${searchTerm}"`}
+          </p>
           {activeFilter !== 'all' && (
             <button 
               onClick={() => setActiveFilter('all')}
@@ -537,8 +741,9 @@ const ProfessionalAppointments = ({ onNavigate }) => {
                 border: 'none',
                 borderRadius: 20,
                 padding: '8px 16px',
-                marginTop: 16,
-                cursor: 'pointer'
+                cursor: 'pointer',
+                fontSize: 14,
+                fontWeight: 500,
               }}
             >
               Ver todas las citas
@@ -569,23 +774,40 @@ const ProfessionalAppointments = ({ onNavigate }) => {
               }}>
                 {groupedAppointments[date].length}
               </span>
-              {getDateSectionTitle(date)}
+              {date === 'fecha-desconocida' ? 
+                'Fecha no especificada' : 
+                getDateSectionTitle(date)
+              }
             </h2>
             
-            {groupedAppointments[date].map(appointment => (
-              <AppointmentCard 
-                key={appointment.id}
-                appointment={appointment}
-                onStatusChange={handleStatusChange}
-              />
-            ))}
+            {groupedAppointments[date]
+              .sort((a, b) => {
+                // Ordenar por hora si está disponible
+                if (a.time && b.time) {
+                  return a.time.localeCompare(b.time);
+                }
+                return 0;
+              })
+              .map(appointment => (
+                <AppointmentCard 
+                  key={appointment.id}
+                  appointment={appointment}
+                  onStatusChange={handleStatusChange}
+                  isUpdating={updatingAppointment}
+                />
+              ))
+            }
           </div>
         ))
       )}
       
+      {/* Botón para programar nueva cita (futuro) */}
       <div style={{ marginTop: 24 }}>
         <button 
-          onClick={() => {/* Aquí iría la lógica para crear nueva cita */}}
+          onClick={() => {
+            // Aquí podrías navegar a una pantalla de creación de citas
+            console.log('Función de crear nueva cita - por implementar');
+          }}
           style={{
             width: '100%',
             padding: '12px',
@@ -599,11 +821,28 @@ const ProfessionalAppointments = ({ onNavigate }) => {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8
+            gap: 8,
+            opacity: 0.7,
           }}
+          disabled
         >
-          <span>➕</span> Programar nueva cita
+          <span>➕</span> Crear nueva cita (Próximamente)
         </button>
+      </div>
+
+      {/* Información adicional */}
+      <div style={{
+        background: '#f9f9f9',
+        borderRadius: 8,
+        padding: '12px',
+        marginTop: 16,
+        fontSize: 13,
+        color: COLORS.textMedium,
+        textAlign: 'center'
+      }}>
+        <p style={{ margin: 0 }}>
+          💡 Las citas se actualizan en tiempo real. Los estudiantes recibirán notificaciones automáticas de los cambios de estado.
+        </p>
       </div>
     </ProfessionalLayout>
   );

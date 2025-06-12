@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
+import { addAppointment, getAppointmentsByStudent, updateAppointmentStatus } from '../../services/appointmentService';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Paleta de colores consistente con el resto de la aplicación
 const COLORS = {
@@ -85,8 +87,10 @@ function NavBar({ active, onNavigate }) {
   );
 }
 
-// Componente principal mejorado
+// Componente principal mejorado con integración Firebase
 function StudentAppointmentBooking({ onNavigate }) {
+  const { currentUser } = useAuth();
+  
   const [activeTab, setActiveTab] = useState('upcoming');
   const [weekOffset, setWeekOffset] = useState(0);
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -95,6 +99,12 @@ function StudentAppointmentBooking({ onNavigate }) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [notes, setNotes] = useState('');
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 768);
+  
+  // Estados para Firebase
+  const [upcomingAppointments, setUpcomingAppointments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
   
   // Responsive breakpoints
   const isMobile = windowWidth < 768;
@@ -111,19 +121,43 @@ function StudentAppointmentBooking({ onNavigate }) {
     }
   }, []);
   
-  // Datos de ejemplo para citas próximas
-  const [upcomingAppointments, setUpcomingAppointments] = useState([
-    { 
-      id: 1, 
-      date: '24 Abr', 
-      time: '10:30 - 10:45', 
-      with: 'Lucía Martínez', 
-      role: 'Enfermera Escolar',
-      reason: 'Consulta general',
-      status: 'confirmed', 
-      location: 'Sala 12, junto a Orientación'
+  // Cargar citas del estudiante desde Firebase
+  useEffect(() => {
+    if (!currentUser) {
+      setLoading(false);
+      return;
     }
-  ]);
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const unsubscribe = getAppointmentsByStudent(currentUser.uid, (appointments) => {
+        // Formatear las citas para mostrar en la UI
+        const formattedAppointments = appointments.map(apt => ({
+          id: apt.id,
+          date: new Date(apt.date.seconds * 1000).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
+          time: apt.time,
+          with: apt.professionalName || 'Lucía Martínez', // Fallback si no está disponible
+          role: apt.professionalRole || 'Enfermera Escolar',
+          reason: apt.reason,
+          status: apt.status,
+          location: apt.location || 'Sala 12, junto a Orientación',
+          notes: apt.notes,
+          originalDate: apt.date // Mantener fecha original para operaciones
+        }));
+        
+        setUpcomingAppointments(formattedAppointments);
+        setLoading(false);
+      });
+
+      return () => unsubscribe();
+    } catch (err) {
+      console.error('Error al cargar citas:', err);
+      setError('Error al cargar las citas');
+      setLoading(false);
+    }
+  }, [currentUser]);
 
   // Genera fechas para los próximos días disponibles
   const getDates = () => {
@@ -166,45 +200,55 @@ function StudentAppointmentBooking({ onNavigate }) {
     setSelectedSlot({ date, time });
   };
   
-  // Maneja la solicitud de cita
+  // Maneja la solicitud de cita con Firebase
   const handleBookAppointment = () => {
-    if (!selectedSlot || !appointmentReason) return;
+    if (!selectedSlot || !appointmentReason || !currentUser) return;
     setShowConfirmation(true);
   };
   
-  // Confirma la cita
-  const confirmAppointment = () => {
-    // Aquí normalmente enviaríamos datos al backend
-    console.log('Cita confirmada:', {
-      ...selectedSlot,
-      reason: appointmentReason,
-      notes
-    });
-    
-    // Simulamos actualización de datos
-    const newAppointment = {
-      id: Math.floor(Math.random() * 1000),
-      date: new Date(selectedSlot.date).toLocaleDateString('es-ES', { day: '2-digit', month: 'short' }),
-      time: selectedSlot.time,
-      with: 'Lucía Martínez',
-      role: 'Enfermera Escolar',
-      reason: appointmentReason,
-      status: 'pending',
-      location: 'Sala 12, junto a Orientación'
-    };
-    
-    setUpcomingAppointments([...upcomingAppointments, newAppointment]);
-    setShowConfirmation(false);
-    setShowSuccess(true);
-    
-    // Reiniciar estados
-    setTimeout(() => {
-      setShowSuccess(false);
-      setSelectedSlot(null);
-      setAppointmentReason('');
-      setNotes('');
-      setActiveTab('upcoming');
-    }, 3000);
+  // Confirma la cita y la guarda en Firebase
+  const confirmAppointment = async () => {
+    if (!currentUser || !selectedSlot) return;
+
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const appointmentData = {
+        studentId: currentUser.uid,
+        studentName: currentUser.displayName || currentUser.email,
+        professionalId: 'lucia-martinez-id', // ID del profesional - esto debería venir de una selección
+        professionalName: 'Lucía Martínez',
+        professionalRole: 'Enfermera Escolar',
+        date: selectedSlot.date,
+        time: selectedSlot.time,
+        reason: appointmentReason,
+        notes: notes,
+        status: 'pending',
+        location: 'Sala 12, junto a Orientación',
+        createdAt: new Date(),
+      };
+
+      await addAppointment(appointmentData);
+      
+      setShowConfirmation(false);
+      setShowSuccess(true);
+      
+      // Reiniciar estados
+      setTimeout(() => {
+        setShowSuccess(false);
+        setSelectedSlot(null);
+        setAppointmentReason('');
+        setNotes('');
+        setActiveTab('upcoming');
+      }, 3000);
+
+    } catch (err) {
+      console.error('Error al crear la cita:', err);
+      setError('Error al solicitar la cita. Por favor, inténtalo de nuevo.');
+    } finally {
+      setSubmitting(false);
+    }
   };
   
   // Opciones para el motivo de la cita
@@ -223,12 +267,37 @@ function StudentAppointmentBooking({ onNavigate }) {
     { id: 'book', label: 'Solicitar cita' }
   ];
   
-  // Función para cancelar una cita
-  const handleCancelAppointment = (id) => {
-    if (window.confirm('¿Estás seguro/a de que deseas cancelar esta cita?')) {
-      setUpcomingAppointments(upcomingAppointments.filter(app => app.id !== id));
+  // Función para cancelar una cita con Firebase
+  const handleCancelAppointment = async (appointmentId) => {
+    if (!window.confirm('¿Estás seguro/a de que deseas cancelar esta cita?')) {
+      return;
+    }
+
+    try {
+      await updateAppointmentStatus(appointmentId, 'cancelled');
+      // La UI se actualizará automáticamente gracias al listener en tiempo real
+    } catch (err) {
+      console.error('Error al cancelar la cita:', err);
+      setError('Error al cancelar la cita');
     }
   };
+
+  // Mostrar error si no está autenticado
+  if (!currentUser) {
+    return (
+      <div style={{ 
+        padding: '2rem', 
+        textAlign: 'center',
+        backgroundColor: COLORS.lightBg,
+        minHeight: '100vh',
+      }}>
+        <h2 style={{ color: COLORS.error }}>Acceso no autorizado</h2>
+        <p style={{ color: COLORS.textMedium }}>
+          Debes iniciar sesión para acceder a tus citas.
+        </p>
+      </div>
+    );
+  }
   
   return (
     <div style={{ 
@@ -262,6 +331,24 @@ function StudentAppointmentBooking({ onNavigate }) {
           Gestiona tus consultas con el personal sanitario
         </p>
       </div>
+
+      {/* Mostrar errores */}
+      {error && (
+        <div style={{
+          background: '#ffebee',
+          borderLeft: `4px solid ${COLORS.error}`,
+          color: COLORS.error,
+          padding: '1rem',
+          borderRadius: 8,
+          marginBottom: '1rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10
+        }}>
+          <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+          <p style={{ margin: 0 }}>{error}</p>
+        </div>
+      )}
       
       {/* Pestañas */}
       <div style={{ 
@@ -314,9 +401,20 @@ function StudentAppointmentBooking({ onNavigate }) {
       {/* Panel de Próximas Citas */}
       {activeTab === 'upcoming' && (
         <div style={{ marginBottom: '1.5rem' }}>
-          {upcomingAppointments.length > 0 ? (
+          {loading ? (
+            <div style={{
+              background: 'white',
+              borderRadius: 12,
+              padding: '2rem 1.5rem',
+              textAlign: 'center',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+            }}>
+              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
+              <p style={{ color: COLORS.textMedium }}>Cargando tus citas...</p>
+            </div>
+          ) : upcomingAppointments.length > 0 ? (
             <div>
-              {upcomingAppointments.map((apt, index) => (
+              {upcomingAppointments.map((apt) => (
                 <div 
                   key={apt.id} 
                   style={{
@@ -375,7 +473,7 @@ function StudentAppointmentBooking({ onNavigate }) {
                             fontSize: '1rem', 
                             fontWeight: 600 
                           }}>
-                            {apt.reason}
+                            {reasonOptions.find(opt => opt.value === apt.reason)?.label || apt.reason}
                           </h3>
                           <p style={{ 
                             margin: '0.2rem 0 0 0', 
@@ -387,15 +485,18 @@ function StudentAppointmentBooking({ onNavigate }) {
                           </p>
                         </div>
                         <div style={{
-                          background: apt.status === 'confirmed' ? '#e8f5e9' : '#fff8e1',
-                          color: apt.status === 'confirmed' ? COLORS.success : COLORS.warning,
+                          background: apt.status === 'confirmed' ? '#e8f5e9' : 
+                                     apt.status === 'cancelled' ? '#ffebee' : '#fff8e1',
+                          color: apt.status === 'confirmed' ? COLORS.success : 
+                                apt.status === 'cancelled' ? COLORS.error : COLORS.warning,
                           padding: '0.3rem 0.8rem',
                           borderRadius: 20,
                           fontSize: '0.75rem',
                           fontWeight: 600,
                           alignSelf: isMobile ? 'flex-start' : 'center',
                         }}>
-                          {apt.status === 'confirmed' ? 'Confirmada' : 'Pendiente'}
+                          {apt.status === 'confirmed' ? 'Confirmada' : 
+                           apt.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
                         </div>
                       </div>
                       
@@ -419,48 +520,62 @@ function StudentAppointmentBooking({ onNavigate }) {
                           <span style={{ fontSize: '0.9rem' }}>📍</span>
                           <span>{apt.location}</span>
                         </p>
+                        {apt.notes && (
+                          <p style={{ 
+                            margin: '0.2rem 0 0 0',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            fontStyle: 'italic',
+                          }}>
+                            <span style={{ fontSize: '0.9rem' }}>💬</span>
+                            <span>"{apt.notes}"</span>
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>
                   
                   {/* Botones de acción */}
-                  <div style={{ 
-                    display: 'flex', 
-                    justifyContent: 'flex-end', 
-                    marginTop: '1rem',
-                    gap: '0.8rem',
-                  }}>
-                    <button 
-                      onClick={() => handleCancelAppointment(apt.id)}
-                      style={{
-                        background: 'rgba(211, 47, 47, 0.1)',
-                        color: COLORS.error,
-                        border: 'none',
-                        borderRadius: 8,
-                        padding: '0.6rem 1rem',
-                        fontSize: '0.85rem',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Cancelar
-                    </button>
-                    <button 
-                      onClick={() => onNavigate('chat')}
-                      style={{
-                        background: COLORS.primary,
-                        color: 'white',
-                        border: 'none',
-                        borderRadius: 8,
-                        padding: '0.6rem 1rem',
-                        fontSize: '0.85rem',
-                        fontWeight: 500,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Consultar
-                    </button>
-                  </div>
+                  {apt.status === 'pending' && (
+                    <div style={{ 
+                      display: 'flex', 
+                      justifyContent: 'flex-end', 
+                      marginTop: '1rem',
+                      gap: '0.8rem',
+                    }}>
+                      <button 
+                        onClick={() => handleCancelAppointment(apt.id)}
+                        style={{
+                          background: 'rgba(211, 47, 47, 0.1)',
+                          color: COLORS.error,
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '0.6rem 1rem',
+                          fontSize: '0.85rem',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        onClick={() => onNavigate('chat')}
+                        style={{
+                          background: COLORS.primary,
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 8,
+                          padding: '0.6rem 1rem',
+                          fontSize: '0.85rem',
+                          fontWeight: 500,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Consultar
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
               
@@ -805,20 +920,30 @@ function StudentAppointmentBooking({ onNavigate }) {
               
               <button
                 onClick={handleBookAppointment}
-                disabled={!appointmentReason}
+                disabled={!appointmentReason || submitting}
                 style={{
                   width: '100%',
-                  background: appointmentReason ? COLORS.primary : '#f5f5f5',
-                  color: appointmentReason ? 'white' : '#aaa',
+                  background: (appointmentReason && !submitting) ? COLORS.primary : '#f5f5f5',
+                  color: (appointmentReason && !submitting) ? 'white' : '#aaa',
                   border: 'none',
                   borderRadius: 50,
                   padding: '0.8rem',
                   fontSize: '1rem',
                   fontWeight: 500,
-                  cursor: appointmentReason ? 'pointer' : 'not-allowed',
+                  cursor: (appointmentReason && !submitting) ? 'pointer' : 'not-allowed',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
                 }}
               >
-                Solicitar cita
+                {submitting ? (
+                  <>
+                    <span>⏳</span> Enviando...
+                  </>
+                ) : (
+                  'Solicitar cita'
+                )}
               </button>
             </div>
           )}
@@ -1001,6 +1126,7 @@ function StudentAppointmentBooking({ onNavigate }) {
             }}>
               <button
                 onClick={() => setShowConfirmation(false)}
+                disabled={submitting}
                 style={{
                   flex: 1,
                   background: '#f5f5f5',
@@ -1010,28 +1136,40 @@ function StudentAppointmentBooking({ onNavigate }) {
                   padding: '0.8rem',
                   fontSize: '1rem',
                   fontWeight: 500,
-                  cursor: 'pointer',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
                   order: isMobile ? 2 : 1,
+                  opacity: submitting ? 0.5 : 1,
                 }}
               >
                 Cancelar
               </button>
               <button
                 onClick={confirmAppointment}
+                disabled={submitting}
                 style={{
                   flex: 1,
-                  background: COLORS.primary,
+                  background: submitting ? '#ccc' : COLORS.primary,
                   color: 'white',
                   border: 'none',
                   borderRadius: 50,
                   padding: '0.8rem',
                   fontSize: '1rem',
                   fontWeight: 500,
-                  cursor: 'pointer',
+                  cursor: submitting ? 'not-allowed' : 'pointer',
                   order: isMobile ? 1 : 2,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
                 }}
               >
-                Confirmar
+                {submitting ? (
+                  <>
+                    <span>⏳</span> Confirmando...
+                  </>
+                ) : (
+                  'Confirmar'
+                )}
               </button>
             </div>
           </div>

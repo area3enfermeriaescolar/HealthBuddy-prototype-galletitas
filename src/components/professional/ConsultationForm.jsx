@@ -1,32 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import ProfessionalLayout from './ProfessionalLayout';
-
-// Función de servicio incorporada directamente en el componente
-const saveConsultationRecord = (consultationData) => {
-  try {
-    // En una implementación real, aquí se enviarían los datos al backend
-    console.log('Guardando consulta:', consultationData);
-    
-    // Simulamos una respuesta exitosa para la demo
-    return {
-      success: true,
-      message: consultationData.id 
-        ? 'Consulta actualizada correctamente' 
-        : 'Consulta registrada correctamente',
-      data: {
-        ...consultationData,
-        id: consultationData.id || Math.floor(Math.random() * 10000) // Generamos un ID si es nuevo
-      }
-    };
-  } catch (error) {
-    console.error('Error al guardar la consulta:', error);
-    return {
-      success: false,
-      message: 'Error al guardar la consulta',
-      error: error.message
-    };
-  }
-};
+// Importaciones de Firebase
+import { addConsultation, updateConsultation } from '../../services/consultationService';
+import { useAuth } from '../../contexts/AuthContext';
 
 // Paleta de colores
 const COLORS = {
@@ -69,13 +45,17 @@ const Alert = ({ type, children, onClose }) => {
     ? 'rgba(255, 152, 0, 0.1)' 
     : type === 'danger' 
       ? 'rgba(231, 76, 60, 0.1)' 
-      : 'rgba(0, 183, 216, 0.1)';
+      : type === 'success'
+        ? 'rgba(76, 175, 80, 0.1)'
+        : 'rgba(0, 183, 216, 0.1)';
   
   const icon = type === 'warning' 
     ? '⚠️' 
     : type === 'danger' 
       ? '🚨' 
-      : 'ℹ️';
+      : type === 'success'
+        ? '✅'
+        : 'ℹ️';
   
   return (
     <div style={{
@@ -185,7 +165,9 @@ const CheckboxGroup = ({ options, selected, onChange, title }) => {
 };
 
 // Componente Principal de Formulario de Consulta
-const ConsultationForm = ({ onNavigate, initialData = null }) => {
+const ConsultationForm = ({ onNavigate, initialData = null, demoMode = false }) => {
+  const { user, userData } = useAuth();
+  
   // Estados del formulario
   const [nre, setNre] = useState(initialData?.nre || '');
   const [date, setDate] = useState(initialData?.date || new Date().toISOString().split('T')[0]);
@@ -204,10 +186,18 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
   const [referralDetails, setReferralDetails] = useState(initialData?.referralDetails || '');
   const [notes, setNotes] = useState(initialData?.notes || '');
   
-  // Estado para alertas
+  // Estados para control de la UI
   const [showDerivationAlert, setShowDerivationAlert] = useState(false);
   const [formErrors, setFormErrors] = useState({});
   const [successMessage, setSuccessMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
+  // Detectar si hay derivación seleccionada al cargar datos iniciales
+  useEffect(() => {
+    if (initialData?.interventionTypes?.includes('derivacion')) {
+      setShowDerivationAlert(true);
+    }
+  }, [initialData]);
   
   // Opciones para campos de selección
   const genderOptions = [
@@ -410,7 +400,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
   };
   
   // Manejar envío del formulario
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!validateForm()) {
@@ -419,33 +409,50 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
       return;
     }
     
-    // Preparar datos para guardar
-    const consultationData = {
-      id: initialData?.id, // Si es edición, incluir el ID
-      nre,
-      date,
-      startTime,
-      endTime,
-      consultationType,
-      age: parseInt(age),
-      course,
-      gender,
-      consultationReasons,
-      mentalHealthOptions: consultationReasons.includes('salud_mental') ? mentalHealthOptions : [],
-      abuseOptions: consultationReasons.includes('acoso') ? abuseOptions : [],
-      addictionOptions: consultationReasons.includes('adicciones') ? addictionOptions : [],
-      otherReason: consultationReasons.includes('otro') ? otherReason : '',
-      interventionTypes,
-      referralDetails: interventionTypes.includes('derivacion') ? referralDetails : '',
-      notes
-    };
+    setIsLoading(true);
+    setFormErrors({});
     
     try {
-      // Guardar en el servicio
-      const result = saveConsultationRecord(consultationData);
-      
-      if (result.success) {
-        setSuccessMessage(result.message);
+      // Preparar datos para guardar
+      const consultationData = {
+        nre: nre.trim(),
+        date,
+        startTime,
+        endTime,
+        consultationType,
+        age: parseInt(age),
+        course,
+        gender,
+        consultationReasons,
+        mentalHealthOptions: consultationReasons.includes('salud_mental') ? mentalHealthOptions : [],
+        abuseOptions: consultationReasons.includes('acoso') ? abuseOptions : [],
+        addictionOptions: consultationReasons.includes('adicciones') ? addictionOptions : [],
+        otherReason: consultationReasons.includes('otro') ? otherReason.trim() : '',
+        interventionTypes,
+        referralDetails: interventionTypes.includes('derivacion') ? referralDetails.trim() : '',
+        notes: notes.trim(),
+        // Datos del profesional
+        professionalId: demoMode ? 'demo-professional' : user?.uid,
+        professionalName: demoMode 
+          ? 'Demo Professional' 
+          : userData 
+            ? `${userData.nombre} ${userData.apellidos}` 
+            : 'Profesional',
+        professionalEmail: demoMode ? 'demo@carm.es' : userData?.email || user?.email,
+        centroSalud: demoMode ? 'Centro Demo' : userData?.centroSalud,
+        // Metadatos
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      // En modo demo, solo simular guardado
+      if (demoMode) {
+        console.log('Datos de consulta (modo demo):', consultationData);
+        
+        // Simular delay de guardado
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        setSuccessMessage(initialData ? 'Consulta actualizada correctamente (modo demo)' : 'Consulta registrada correctamente (modo demo)');
         
         // Limpiar formulario si es nuevo registro
         if (!initialData) {
@@ -462,11 +469,63 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
           }, 2000);
         }
       } else {
-        setFormErrors({...formErrors, general: 'Error al guardar la consulta'});
+        // Guardar en Firebase
+        let result;
+        
+        if (initialData && initialData.id) {
+          // Actualizar consulta existente
+          result = await updateConsultation(initialData.id, consultationData);
+          setSuccessMessage('Consulta actualizada correctamente');
+        } else {
+          // Crear nueva consulta
+          result = await addConsultation(consultationData);
+          setSuccessMessage('Consulta registrada correctamente');
+        }
+        
+        console.log('Consulta guardada en Firebase:', result);
+        
+        // Limpiar formulario si es nuevo registro
+        if (!initialData) {
+          resetForm();
+        }
+        
+        // Desplazar al inicio para mostrar mensaje de éxito
+        window.scrollTo(0, 0);
+        
+        // Cerrar después de un tiempo si es edición
+        if (initialData) {
+          setTimeout(() => {
+            handleBack();
+          }, 2000);
+        }
       }
+      
     } catch (error) {
       console.error('Error al guardar la consulta:', error);
-      setFormErrors({...formErrors, general: 'Error al guardar la consulta'});
+      
+      let errorMessage = 'Error al guardar la consulta. Inténtalo de nuevo.';
+      
+      // Manejar diferentes tipos de errores de Firebase
+      if (error.code) {
+        switch (error.code) {
+          case 'permission-denied':
+            errorMessage = 'No tienes permisos para realizar esta acción.';
+            break;
+          case 'network-request-failed':
+            errorMessage = 'Error de conexión. Verifica tu internet.';
+            break;
+          case 'unauthenticated':
+            errorMessage = 'Debes iniciar sesión para guardar consultas.';
+            break;
+          default:
+            errorMessage = error.message || errorMessage;
+        }
+      }
+      
+      setFormErrors({ general: errorMessage });
+      window.scrollTo(0, 0);
+    } finally {
+      setIsLoading(false);
     }
   };
   
@@ -489,17 +548,16 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
     setReferralDetails('');
     setNotes('');
     setShowDerivationAlert(false);
+    setFormErrors({});
   };
   
   const handleBack = () => {
     if (onNavigate) {
       onNavigate('dashboard');
-    } else if (onBack) {
-      onBack();
     }
   };
   
-  // Aquí agrupamos todas las alertas para mostrarlas juntas al inicio del formulario
+  // Renderizar alertas
   const renderAlerts = () => {
     return (
       <div style={{ marginBottom: 16 }}>
@@ -511,8 +569,15 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
         )}
         
         {successMessage && (
-          <Alert type="accent" onClose={() => setSuccessMessage('')}>
+          <Alert type="success" onClose={() => setSuccessMessage('')}>
             {successMessage}
+          </Alert>
+        )}
+        
+        {/* Modo demo notice */}
+        {demoMode && (
+          <Alert type="warning">
+            <strong>Modo Demo:</strong> Los datos no se guardarán permanentemente. En la versión real, se almacenarían en Firebase Firestore.
           </Alert>
         )}
         
@@ -521,6 +586,13 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
           <Alert type="warning">
             <strong>Recordatorio:</strong> Has seleccionado derivación como tipo de intervención. 
             Por favor, especifica los detalles de la derivación en el campo correspondiente.
+          </Alert>
+        )}
+        
+        {/* Alerta para autenticación requerida */}
+        {!demoMode && !user && (
+          <Alert type="danger">
+            <strong>Autenticación requerida:</strong> Debes iniciar sesión para guardar consultas.
           </Alert>
         )}
       </div>
@@ -534,7 +606,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
       activeScreen="consultation-form"
       onNavigate={onNavigate}
     >
-      <DemoBadge />
+      {demoMode && <DemoBadge />}
       
       {/* Agrupamos todas las alertas al inicio del formulario para mejor visibilidad */}
       {renderAlerts()}
@@ -576,6 +648,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                 }
               }}
               placeholder="Número de Registro del Estudiante"
+              disabled={isLoading}
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -620,6 +693,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                     setFormErrors({...formErrors, date: null});
                   }
                 }}
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -658,6 +732,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                     setFormErrors({...formErrors, startTime: null});
                   }
                 }}
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -691,6 +766,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                 type="time" 
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -717,19 +793,20 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
               gap: 16 
             }}>
               <div 
-                onClick={() => setConsultationType('presencial')}
+                onClick={() => !isLoading && setConsultationType('presencial')}
                 style={{
                   flex: 1,
                   background: consultationType === 'presencial' ? 'rgba(0, 183, 216, 0.1)' : COLORS.lightBg,
                   border: consultationType === 'presencial' ? `2px solid ${COLORS.primary}` : `2px solid ${COLORS.lightGrey}`,
                   borderRadius: 8,
                   padding: '10px 12px',
-                  cursor: 'pointer',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 8,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
+                  opacity: isLoading ? 0.6 : 1
                 }}
               >
                 <div style={{
@@ -760,19 +837,20 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
               </div>
               
               <div 
-                onClick={() => setConsultationType('virtual')}
+                onClick={() => !isLoading && setConsultationType('virtual')}
                 style={{
                   flex: 1,
                   background: consultationType === 'virtual' ? 'rgba(0, 183, 216, 0.1)' : COLORS.lightBg,
                   border: consultationType === 'virtual' ? `2px solid ${COLORS.primary}` : `2px solid ${COLORS.lightGrey}`,
                   borderRadius: 8,
                   padding: '10px 12px',
-                  cursor: 'pointer',
+                  cursor: isLoading ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: 8,
-                  transition: 'all 0.2s ease'
+                  transition: 'all 0.2s ease',
+                  opacity: isLoading ? 0.6 : 1
                 }}
               >
                 <div style={{
@@ -831,6 +909,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                 min="10"
                 max="25"
                 placeholder="Edad"
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -868,6 +947,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                     setFormErrors({...formErrors, course: null});
                   }
                 }}
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -916,6 +996,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                     setFormErrors({...formErrors, gender: null});
                   }
                 }}
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -1039,6 +1120,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                   }
                 }}
                 placeholder="Describa el motivo de consulta"
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -1125,6 +1207,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
                 }}
                 placeholder="Especifique a dónde se deriva y motivo"
                 rows={3}
+                disabled={isLoading}
                 style={{
                   width: '100%',
                   padding: '10px 12px',
@@ -1162,6 +1245,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Observaciones, recomendaciones, etc."
               rows={4}
+              disabled={isLoading}
               style={{
                 width: '100%',
                 padding: '10px 12px',
@@ -1183,6 +1267,7 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
           <button 
             type="button"
             onClick={handleBack}
+            disabled={isLoading}
             style={{
               flex: 1,
               padding: '12px',
@@ -1192,7 +1277,8 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
               color: COLORS.textDark,
               fontSize: 14,
               fontWeight: 500,
-              cursor: 'pointer'
+              cursor: isLoading ? 'not-allowed' : 'pointer',
+              opacity: isLoading ? 0.6 : 1
             }}
           >
             Cancelar
@@ -1200,22 +1286,48 @@ const ConsultationForm = ({ onNavigate, initialData = null }) => {
           
           <button 
             type="submit"
+            disabled={isLoading || (!demoMode && !user)}
             style={{
               flex: 1,
               padding: '12px',
-              background: COLORS.primary,
+              background: isLoading || (!demoMode && !user) ? COLORS.lightGrey : COLORS.primary,
               border: 'none',
               borderRadius: 8,
               color: 'white',
               fontSize: 14,
               fontWeight: 500,
-              cursor: 'pointer'
+              cursor: isLoading || (!demoMode && !user) ? 'not-allowed' : 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8
             }}
           >
-            {initialData ? 'Actualizar consulta' : 'Guardar consulta'}
+            {isLoading && (
+              <div style={{
+                width: 16,
+                height: 16,
+                border: '2px solid rgba(255,255,255,0.3)',
+                borderTop: '2px solid white',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+            )}
+            {isLoading 
+              ? (initialData ? 'Actualizando...' : 'Guardando...') 
+              : (initialData ? 'Actualizar consulta' : 'Guardar consulta')
+            }
           </button>
         </div>
       </form>
+      
+      {/* CSS para animación de loading */}
+      <style>{`
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `}</style>
     </ProfessionalLayout>
   );
 };

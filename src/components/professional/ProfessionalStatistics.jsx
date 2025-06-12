@@ -1,4 +1,13 @@
 import React, { useState, useEffect } from 'react';
+import {
+  getTotalConsultations,
+  getConsultationsByTopic,
+  getConsultationsByCourse,
+  getConsultationsByAgeGroup,
+  getMostAccessedResources,
+  getTotalAppointments,
+  getAppointmentsByStatus,
+} from "../../services/statisticsService";
 
 // Paleta de colores
 const COLORS = {
@@ -36,6 +45,15 @@ const DemoBadge = () => (
 
 // Componente de Gráfico de Barras
 const BarChart = ({ data, title, color = COLORS.primary }) => {
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ marginBottom: 24 }}>
+        {title && <h3 style={{ fontSize: 16, marginBottom: 16, color: COLORS.textDark }}>{title}</h3>}
+        <p style={{ color: COLORS.textMedium, fontStyle: 'italic' }}>No hay datos disponibles</p>
+      </div>
+    );
+  }
+
   const maxValue = Math.max(...data.map(item => item.value));
   
   return (
@@ -55,7 +73,7 @@ const BarChart = ({ data, title, color = COLORS.primary }) => {
             overflow: 'hidden' 
           }}>
             <div style={{ 
-              width: `${(item.value / maxValue) * 100}%`,
+              width: `${maxValue > 0 ? (item.value / maxValue) * 100 : 0}%`,
               height: '100%',
               background: color,
               borderRadius: 4,
@@ -71,14 +89,18 @@ const BarChart = ({ data, title, color = COLORS.primary }) => {
 // Componente de Gráfico Circular adaptativo
 const PieChart = ({ data }) => {
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 768);
-  const total = data.reduce((sum, item) => sum + item.value, 0);
   
   useEffect(() => {
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
+
+  if (!data || data.length === 0) {
+    return <p style={{ color: COLORS.textMedium, fontStyle: 'italic' }}>No hay datos disponibles</p>;
+  }
+
+  const total = data.reduce((sum, item) => sum + item.value, 0);
   const isMobile = windowWidth < 480;
   const chartSize = isMobile ? 120 : 150;
   const colors = [COLORS.primary, COLORS.accentGreen, COLORS.purple, COLORS.accentOrange, COLORS.accentRed];
@@ -109,7 +131,7 @@ const PieChart = ({ data }) => {
               overflow: 'hidden' 
             }}>
               <div style={{ 
-                width: `${(item.value / total) * 100}%`,
+                width: `${total > 0 ? (item.value / total) * 100 : 0}%`,
                 height: '100%',
                 background: colors[index % colors.length],
                 borderRadius: 3
@@ -188,12 +210,38 @@ const PieChart = ({ data }) => {
   );
 };
 
+// Función auxiliar para convertir objetos a arrays para gráficos
+const objectToChartData = (dataObject) => {
+  return Object.entries(dataObject).map(([key, value]) => ({
+    label: key,
+    value: value
+  })).sort((a, b) => b.value - a.value);
+};
+
+// Función auxiliar para convertir arrays de recursos a formato de gráfico
+const resourceArrayToChartData = (resourceArray) => {
+  return resourceArray.map(([title, count]) => ({
+    label: title,
+    value: count
+  }));
+};
+
 // Componente principal de Estadísticas
 const ProfessionalStatistics = ({ onNavigate }) => {
   const [selectedCenter, setSelectedCenter] = useState('all');
   const [timeRange, setTimeRange] = useState('month');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 768);
+  
+  // Estados para los datos reales
+  const [totalConsultations, setTotalConsultations] = useState(0);
+  const [totalAppointments, setTotalAppointments] = useState(0);
+  const [consultationsByTopic, setConsultationsByTopic] = useState([]);
+  const [consultationsByCourse, setConsultationsByCourse] = useState([]);
+  const [consultationsByAge, setConsultationsByAge] = useState([]);
+  const [appointmentsByStatus, setAppointmentsByStatus] = useState([]);
+  const [topResources, setTopResources] = useState([]);
   
   // Detectar cambios en el ancho de la ventana
   useEffect(() => {
@@ -202,15 +250,56 @@ const ProfessionalStatistics = ({ onNavigate }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
   
-  // Simulación de carga de datos
+  // Cargar datos reales de Firestore
   useEffect(() => {
-    setTimeout(() => setLoading(false), 1000);
-  }, []);
+    const fetchStatistics = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+
+        // Ejecutar todas las consultas en paralelo para mejor rendimiento
+        const [
+          totalConsultationsData,
+          totalAppointmentsData,
+          consultationsByTopicData,
+          consultationsByCourseData,
+          consultationsByAgeData,
+          appointmentsByStatusData,
+          topResourcesData,
+        ] = await Promise.all([
+          getTotalConsultations(),
+          getTotalAppointments(),
+          getConsultationsByTopic(),
+          getConsultationsByCourse(),
+          getConsultationsByAgeGroup(),
+          getAppointmentsByStatus(),
+          getMostAccessedResources(),
+        ]);
+
+        // Actualizar estados con los datos obtenidos
+        setTotalConsultations(totalConsultationsData);
+        setTotalAppointments(totalAppointmentsData);
+        setConsultationsByTopic(objectToChartData(consultationsByTopicData));
+        setConsultationsByCourse(objectToChartData(consultationsByCourseData));
+        setConsultationsByAge(objectToChartData(consultationsByAgeData));
+        setAppointmentsByStatus(objectToChartData(appointmentsByStatusData));
+        setTopResources(resourceArrayToChartData(topResourcesData.slice(0, 10))); // Limitar a top 10
+
+      } catch (err) {
+        console.error("Error al cargar estadísticas:", err);
+        setError("No se pudieron cargar las estadísticas. Verifica tu conexión e inténtalo de nuevo.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchStatistics();
+  }, [selectedCenter, timeRange]); // Recargar cuando cambien los filtros
   
   const isMobile = windowWidth < 480;
   const isTablet = windowWidth < 768;
   
-  // Datos de ejemplo
+  // Datos de ejemplo para centros (esto podría venir de Firestore también)
   const centers = [
     { id: 'all', name: 'Todos los centros' },
     { id: 'ies-mediterraneo', name: 'IES Mediterráneo' },
@@ -218,48 +307,29 @@ const ProfessionalStatistics = ({ onNavigate }) => {
     { id: 'ies-mar-menor', name: 'IES Mar Menor' }
   ];
   
-  const topicsData = [
-    { label: 'Salud mental', value: 45 },
-    { label: 'Sexualidad', value: 38 },
-    { label: 'Nutrición', value: 32 },
-    { label: 'Adicciones', value: 28 },
-    { label: 'Relaciones', value: 24 },
-    { label: 'Ejercicio físico', value: 21 }
-  ];
+  // Calcular edad promedio (esto podría ser otra función en statisticsService)
+  const calculateAverageAge = () => {
+    if (consultationsByAge.length === 0) return "N/A";
+    
+    let totalAge = 0;
+    let totalStudents = 0;
+    
+    consultationsByAge.forEach(ageGroup => {
+      if (ageGroup.label !== "Desconocido") {
+        const ageRange = ageGroup.label.split('-');
+        const avgAge = ageRange.length > 1 
+          ? (parseInt(ageRange[0]) + parseInt(ageRange[1])) / 2 
+          : parseInt(ageRange[0]);
+        totalAge += avgAge * ageGroup.value;
+        totalStudents += ageGroup.value;
+      }
+    });
+    
+    return totalStudents > 0 ? (totalAge / totalStudents).toFixed(1) : "N/A";
+  };
   
-  const ageData = [
-    { label: '12-14 años', value: 42 },
-    { label: '15-16 años', value: 65 },
-    { label: '17-18 años', value: 48 },
-    { label: '18+ años', value: 23 }
-  ];
-  
-  const genderData = [
-    { label: 'Femenino', value: 112 },
-    { label: 'Masculino', value: 66 }
-  ];
-  
-  const consultationTypeData = [
-    { label: 'Presencial', value: 134 },
-    { label: 'Virtual (Chat)', value: 44 }
-  ];
-  
-  const resourceAccessData = [
-    { label: 'Recursos de salud mental', value: 156 },
-    { label: 'Guías de sexualidad', value: 142 },
-    { label: 'Material nutricional', value: 98 },
-    { label: 'Prevención adicciones', value: 76 },
-    { label: 'Ejercicios y actividad física', value: 54 }
-  ];
-  
-  const consultationTrends = [
-    { label: 'Ene', value: 25 },
-    { label: 'Feb', value: 32 },
-    { label: 'Mar', value: 45 },
-    { label: 'Abr', value: 38 },
-    { label: 'May', value: 52 },
-    { label: 'Jun', value: 48 }
-  ];
+  // Calcular total de recursos accedidos
+  const totalResourcesAccessed = topResources.reduce((sum, resource) => sum + resource.value, 0);
   
   if (loading) {
     return (
@@ -308,6 +378,73 @@ const ProfessionalStatistics = ({ onNavigate }) => {
           color: COLORS.textMedium 
         }}>
           Cargando estadísticas...
+        </div>
+      </div>
+    );
+  }
+  
+  if (error) {
+    return (
+      <div style={{ 
+        padding: isMobile ? '0.75rem' : '1rem', 
+        paddingBottom: 100, 
+        maxWidth: 800, 
+        margin: '0 auto' 
+      }}>
+        <DemoBadge />
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          marginBottom: 16,
+          position: 'relative'
+        }}>
+          <button
+            onClick={() => onNavigate('dashboard')}
+            style={{ 
+              background: 'none', 
+              border: 'none', 
+              color: COLORS.primary, 
+              fontSize: 16, 
+              display: 'flex',
+              alignItems: 'center',
+              gap: 4,
+              cursor: 'pointer',
+              padding: 0,
+              position: 'absolute',
+              left: 0
+            }}
+          >
+            <span style={{ fontSize: 20 }}>←</span> {!isMobile && 'Atrás'}
+          </button>
+          <h1 style={{ 
+            flex: 1, 
+            textAlign: 'center',
+            fontWeight: 'bold',
+            fontSize: isMobile ? 16 : 18
+          }}>Estadísticas</h1>
+        </div>
+        
+        <div style={{ 
+          textAlign: 'center', 
+          padding: '30px 0', 
+          color: COLORS.accentRed 
+        }}>
+          {error}
+          <br />
+          <button
+            onClick={() => window.location.reload()}
+            style={{
+              marginTop: 16,
+              background: COLORS.primary,
+              color: 'white',
+              border: 'none',
+              borderRadius: 8,
+              padding: '8px 16px',
+              cursor: 'pointer'
+            }}
+          >
+            Reintentar
+          </button>
         </div>
       </div>
     );
@@ -415,7 +552,7 @@ const ProfessionalStatistics = ({ onNavigate }) => {
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 'bold', color: COLORS.primary }}>178</div>
+          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 'bold', color: COLORS.primary }}>{totalConsultations}</div>
           <div style={{ fontSize: isMobile ? 12 : 14, color: COLORS.textMedium }}>Total consultas</div>
         </div>
         <div style={{ 
@@ -425,7 +562,7 @@ const ProfessionalStatistics = ({ onNavigate }) => {
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 'bold', color: COLORS.accentGreen }}>526</div>
+          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 'bold', color: COLORS.accentGreen }}>{totalResourcesAccessed}</div>
           <div style={{ fontSize: isMobile ? 12 : 14, color: COLORS.textMedium }}>Recursos accedidos</div>
         </div>
         <div style={{ 
@@ -435,7 +572,7 @@ const ProfessionalStatistics = ({ onNavigate }) => {
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
           textAlign: 'center'
         }}>
-          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 'bold', color: COLORS.purple }}>15.3</div>
+          <div style={{ fontSize: isMobile ? 24 : 32, fontWeight: 'bold', color: COLORS.purple }}>{calculateAverageAge()}</div>
           <div style={{ fontSize: isMobile ? 12 : 14, color: COLORS.textMedium }}>Edad promedio</div>
         </div>
       </div>
@@ -453,7 +590,7 @@ const ProfessionalStatistics = ({ onNavigate }) => {
           padding: isMobile ? 12 : 16, 
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
         }}>
-          <BarChart data={topicsData} title="Temas más consultados" />
+          <BarChart data={consultationsByTopic} title="Temas más consultados" />
         </div>
         
         {/* Distribución por edad */}
@@ -463,7 +600,7 @@ const ProfessionalStatistics = ({ onNavigate }) => {
           padding: isMobile ? 12 : 16, 
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
         }}>
-          <BarChart data={ageData} title="Distribución por edad" color={COLORS.purple} />
+          <BarChart data={consultationsByAge} title="Distribución por edad" color={COLORS.purple} />
         </div>
       </div>
       
@@ -474,50 +611,57 @@ const ProfessionalStatistics = ({ onNavigate }) => {
         gap: isMobile ? 16 : 24,
         marginTop: isMobile ? 16 : 24
       }}>
-        {/* Distribución por género */}
+        {/* Distribución por curso */}
         <div style={{ 
           background: 'white', 
           borderRadius: 12, 
           padding: isMobile ? 12 : 16, 
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
         }}>
-          <h3 style={{ fontSize: isMobile ? 15 : 16, marginBottom: 16, color: COLORS.textDark }}>Distribución por género</h3>
-          <PieChart data={genderData} />
+          <h3 style={{ fontSize: isMobile ? 15 : 16, marginBottom: 16, color: COLORS.textDark }}>Distribución por curso</h3>
+          <PieChart data={consultationsByCourse} />
         </div>
         
-        {/* Tipo de consulta */}
+        {/* Estado de citas */}
         <div style={{ 
           background: 'white', 
           borderRadius: 12, 
           padding: isMobile ? 12 : 16, 
           boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
         }}>
-          <h3 style={{ fontSize: isMobile ? 15 : 16, marginBottom: 16, color: COLORS.textDark }}>Tipo de consulta</h3>
-          <PieChart data={consultationTypeData} />
+          <h3 style={{ fontSize: isMobile ? 15 : 16, marginBottom: 16, color: COLORS.textDark }}>Estado de citas</h3>
+          <PieChart data={appointmentsByStatus} />
         </div>
-      </div>
-      
-      {/* Tendencias */}
-      <div style={{ 
-        background: 'white', 
-        borderRadius: 12, 
-        padding: isMobile ? 12 : 16, 
-        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-        marginTop: isMobile ? 16 : 24
-      }}>
-        <BarChart data={consultationTrends} title="Tendencia de consultas" color={COLORS.accentGreen} />
       </div>
       
       {/* Recursos más accedidos */}
-      <div style={{ 
-        background: 'white', 
-        borderRadius: 12, 
-        padding: isMobile ? 12 : 16, 
-        boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-        marginTop: isMobile ? 16 : 24
-      }}>
-        <BarChart data={resourceAccessData} title="Recursos más accedidos" color={COLORS.accentOrange} />
-      </div>
+      {topResources.length > 0 && (
+        <div style={{ 
+          background: 'white', 
+          borderRadius: 12, 
+          padding: isMobile ? 12 : 16, 
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          marginTop: isMobile ? 16 : 24
+        }}>
+          <BarChart data={topResources} title="Recursos más accedidos" color={COLORS.accentOrange} />
+        </div>
+      )}
+      
+      {/* Información adicional si no hay datos */}
+      {totalConsultations === 0 && (
+        <div style={{ 
+          background: 'white', 
+          borderRadius: 12, 
+          padding: isMobile ? 12 : 16, 
+          boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+          marginTop: isMobile ? 16 : 24,
+          textAlign: 'center'
+        }}>
+          <p style={{ color: COLORS.textMedium, fontStyle: 'italic' }}>
+            No hay datos de consultas disponibles. Las estadísticas aparecerán cuando los usuarios comiencen a utilizar el sistema.
+          </p>
+        </div>
+      )}
       
       {/* Botón de exportar */}
       <div style={{ 
@@ -539,6 +683,10 @@ const ProfessionalStatistics = ({ onNavigate }) => {
             gap: 8,
             width: isMobile ? '100%' : 'auto',
             justifyContent: 'center'
+          }}
+          onClick={() => {
+            // Aquí podrías implementar la funcionalidad de exportar
+            alert('Funcionalidad de exportar en desarrollo');
           }}
         >
           <span>📥</span> Exportar informe

@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './StudentInterface.css';
+import { addResourceConsultation, getResourceConsultationsByStudent } from '../../services/resourceService';
+import { useAuth } from '../../contexts/AuthContext';
 
 /******************** PALETA ************************/
 const COLORS = {
@@ -434,15 +436,17 @@ const ResourceDetail = ({ resource, onBack }) => {
 
 /******************* COMPONENT **********************/
 export default function StudentResources({ onNavigate }) {
+  const { currentUser } = useAuth();
   const [selected, setSelected] = useState(null); // id categoría
   const [search, setSearch] = useState('');
   const [selectedResource, setSelectedResource] = useState(null);
   const [recentlyViewed, setRecentlyViewed] = useState([]);
   const [popularResources, setPopularResources] = useState([]);
+  const [consultedResources, setConsultedResources] = useState([]);
 
-  // Cargar recursos populares (simulado)
+  // Cargar recursos populares y historial de recursos consultados
   useEffect(() => {
-    // Simulamos una carga de datos
+    // Simulamos una carga de datos populares
     const popular = [
       resourcesData.sexual[0], // Métodos anticonceptivos
       resourcesData.mental[0], // Manejo del estrés
@@ -451,13 +455,37 @@ export default function StudentResources({ onNavigate }) {
     ];
     setPopularResources(popular);
     
-    // Simulamos recursos vistos recientemente
-    const recent = [
-      resourcesData.sexual[2], // Consentimiento
-      resourcesData.nutrition[0], // Desayunos saludables
-    ];
-    setRecentlyViewed(recent);
-  }, []);
+    // Cargar historial de recursos consultados si hay usuario autenticado
+    if (currentUser) {
+      const unsubscribe = getResourceConsultationsByStudent(currentUser.uid, (resources) => {
+        setConsultedResources(resources);
+        
+        // Actualizar recursos vistos recientemente basado en el historial real
+        const recentResources = resources
+          .sort((a, b) => b.consultedAt.toDate() - a.consultedAt.toDate())
+          .slice(0, 5)
+          .map(consultation => {
+            // Buscar el recurso completo en nuestros datos mock
+            for (const categoryResources of Object.values(resourcesData)) {
+              const resource = categoryResources.find(r => r.id.toString() === consultation.resourceId);
+              if (resource) return resource;
+            }
+            return null;
+          })
+          .filter(Boolean);
+        
+        setRecentlyViewed(recentResources);
+      });
+      return () => unsubscribe();
+    } else {
+      // Si no hay usuario, mostrar datos simulados
+      const recent = [
+        resourcesData.sexual[2], // Consentimiento
+        resourcesData.nutrition[0], // Desayunos saludables
+      ];
+      setRecentlyViewed(recent);
+    }
+  }, [currentUser]);
 
   // Filtrar recursos por búsqueda
   const getFilteredResources = () => {
@@ -482,11 +510,41 @@ export default function StudentResources({ onNavigate }) {
     return results;
   };
 
-  // Manejar selección de recurso
-  const handleSelectResource = (resource) => {
+  // Función auxiliar para obtener la categoría de un recurso por su ID
+  const getCategoryByResourceId = (resourceId) => {
+    for (const [categoryId, categoryResources] of Object.entries(resourcesData)) {
+      if (categoryResources.some(r => r.id === resourceId)) {
+        const category = categories.find(c => c.id === categoryId);
+        return category ? category.label : 'Sin categoría';
+      }
+    }
+    return 'Sin categoría';
+  };
+
+  // Manejar selección de recurso y registrar consulta
+  const handleSelectResource = async (resource) => {
     setSelectedResource(resource);
     
-    // Añadir a vistos recientemente si no está ya
+    // Registrar la consulta del recurso si hay usuario autenticado
+    if (currentUser) {
+      try {
+        const consultationData = {
+          studentId: currentUser.uid,
+          resourceId: resource.id.toString(),
+          resourceTitle: resource.title,
+          resourceType: resource.type,
+          resourceCategory: getCategoryByResourceId(resource.id),
+          consultedAt: new Date(),
+        };
+
+        await addResourceConsultation(consultationData);
+        console.log(`Recurso "${resource.title}" consultado exitosamente por ${currentUser.alias || currentUser.email}!`);
+      } catch (error) {
+        console.error("Error al registrar la consulta del recurso:", error);
+      }
+    }
+    
+    // Añadir a vistos recientemente si no está ya (para usuarios no autenticados o como respaldo)
     if (!recentlyViewed.some(r => r.id === resource.id)) {
       setRecentlyViewed(prev => [resource, ...prev].slice(0, 5));
     }
@@ -672,7 +730,9 @@ export default function StudentResources({ onNavigate }) {
         {/* Vistos recientemente */}
         {recentlyViewed.length > 0 && (
           <>
-            <h2 style={{ fontSize: 18, marginBottom: 12, marginTop: 24 }}>Vistos recientemente</h2>
+            <h2 style={{ fontSize: 18, marginBottom: 12, marginTop: 24 }}>
+              {currentUser ? 'Consultados recientemente' : 'Vistos recientemente'}
+            </h2>
             {recentlyViewed.map(resource => (
               <ResourceCard 
                 key={resource.id} 
