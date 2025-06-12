@@ -1,26 +1,18 @@
-// src/firebase/config.js
 import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
+import { getFirestore } from 'firebase/firestore';
 
-// Configuración de Firebase
-// En un entorno de producción, estas credenciales deberían estar en variables de entorno
 const firebaseConfig = {
-  apiKey: "AIzaSyDummyKeyForHealthBuddyApp",
-  authDomain: "healthbuddy-piloto.firebaseapp.com",
-  projectId: "healthbuddy-piloto",
-  storageBucket: "healthbuddy-piloto.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abc123def456ghi789jkl",
-  measurementId: "G-MEASUREMENT_ID"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID,
 };
 
-// Inicializar Firebase
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-// Exportar servicios
-export const db = getFirestore(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
-export default app;
+export { auth, db };

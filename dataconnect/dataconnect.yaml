@@ -1,0 +1,12 @@
+specVersion: "v1"
+serviceId: "healthbuddy-prototype-galletitascopia"
+location: "us-central1"
+schema:
+  source: "./schema"
+  datasource:
+    postgresql:
+      database: "fdcdb"
+      cloudSql:
+        instanceId: "healthbuddy-prototype-galletitascopia-fdc"
+      # schemaValidation: "COMPATIBLE"
+connectorDirs: ["./connector"]
