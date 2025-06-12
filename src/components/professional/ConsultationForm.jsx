@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ProfessionalLayout from './ProfessionalLayout';
 // Importaciones de Firebase
-import { addConsultation, updateConsultation } from '../../services/consultationService';
+import { saveConsultationRecord } from '../../services/consultationService';
 import { useAuth } from '../../contexts/AuthContext';
 
 // Paleta de colores
@@ -472,15 +472,14 @@ const ConsultationForm = ({ onNavigate, initialData = null, demoMode = false }) 
         // Guardar en Firebase
         let result;
         
+        // Añadir ID si es una actualización
         if (initialData && initialData.id) {
-          // Actualizar consulta existente
-          result = await updateConsultation(initialData.id, consultationData);
-          setSuccessMessage('Consulta actualizada correctamente');
-        } else {
-          // Crear nueva consulta
-          result = await addConsultation(consultationData);
-          setSuccessMessage('Consulta registrada correctamente');
+          consultationData.id = initialData.id;
         }
+        
+        // Guardar consulta (crear nueva o actualizar existente)
+        result = await saveConsultationRecord(consultationData);
+        setSuccessMessage(initialData && initialData.id ? 'Consulta actualizada correctamente' : 'Consulta registrada correctamente');
         
         console.log('Consulta guardada en Firebase:', result);
         

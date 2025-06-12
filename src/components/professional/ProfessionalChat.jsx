@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { sendMessage, getChatMessages, createChat, getChatsForUser } from '../../services/chatService';
+import { sendMessage, getChatMessages, createChat, getUserChats } from '../../services/chatService';
 import { useAuth } from '../../contexts/AuthContext';
 
 // Paleta de colores
@@ -93,16 +93,25 @@ const ProfessionalChat = ({ onNavigate }) => {
   useEffect(() => {
     if (currentUser) {
       setLoading(true);
-      const unsubscribeChats = getChatsForUser(currentUser.uid, (userChats) => {
-        setChats(userChats);
-        setLoading(false);
-      }, (err) => {
-        console.error('Error loading chats:', err);
-        setError('Error al cargar las conversaciones');
-        setLoading(false);
-      });
-
-      return () => unsubscribeChats();
+      
+      const fetchChats = async () => {
+        try {
+          const result = await getUserChats(currentUser.uid, 'professional');
+          if (result.success) {
+            setChats(result.data);
+          } else {
+            console.error('Error loading chats:', result.message);
+            setError('Error al cargar las conversaciones');
+          }
+          setLoading(false);
+        } catch (err) {
+          console.error('Error loading chats:', err);
+          setError('Error al cargar las conversaciones');
+          setLoading(false);
+        }
+      };
+      
+      fetchChats();
     } else {
       // Modo demo sin autenticación
       setChats(chatsMockDemo);

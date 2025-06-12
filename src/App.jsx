@@ -31,7 +31,7 @@ const ProfessionalInterconsultation = lazy(() => import('./components/profession
 const ProfessionalResources = lazy(() => import('./components/professional/ProfessionalResources'));
 
 // Componentes de Login actualizados para usar el tema unificado
-import { StudentLogin, ProfessionalLogin } from './LoginForms';
+import LoginForms from './LoginForms';
 
 /**
  * Componente interno de la aplicación que utiliza el contexto de autenticación
@@ -256,19 +256,13 @@ function AppContent() {
           {/* Badge de demo si corresponde */}
           {demoMode && <div className="demo-badge">DEMO</div>}
           
-          {selectedAccess === 'student' ? (
-            <StudentLogin 
-              onLogin={handleLogin} 
-              onBack={handleBack}
-              onSkipLogin={() => handleDemoAccess('student')}
-            />
-          ) : (
-            <ProfessionalLogin 
-              onLogin={handleLogin} 
-              onBack={handleBack}
-              onSkipLogin={() => handleDemoAccess('professional')}
-            />
-          )}
+          <LoginForms
+            selectedAccess={selectedAccess}
+            onLogin={handleLogin}
+            onBack={handleBack}
+            onSkipLogin={() => handleDemoAccess(selectedAccess === 'student' ? 'student' : 'professional')}
+            onShowRegistration={() => setSelectedAccess('registration')}
+          />
         </div>
       ) 
       /* Pantallas principales de la aplicación */

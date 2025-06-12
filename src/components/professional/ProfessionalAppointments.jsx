@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ProfessionalLayout from './ProfessionalLayout';
-import { getAppointmentsByProfessional, updateAppointmentStatus } from '../../services/appointmentService';
+import { getProfessionalAppointments, updateAppointmentStatus } from '../../services/appointmentService';
 import { useAuth } from '../../contexts/AuthContext';
 
 // Función para formatear fecha de yyyy-mm-dd a dd/mm/yyyy
@@ -440,13 +440,22 @@ const ProfessionalAppointments = ({ onNavigate }) => {
       // En un caso real, podrías tener el professionalId en el perfil del usuario
       const professionalId = currentUser.uid; // o currentUser.professionalId si lo tienes
 
-      const unsubscribe = getAppointmentsByProfessional(professionalId, (appointmentsData) => {
-        console.log('Citas recibidas:', appointmentsData);
-        setAppointments(appointmentsData);
+      const fetchAppointments = async () => {
+        const result = await getProfessionalAppointments(professionalId);
+        if (result.success) {
+          console.log('Citas recibidas:', result.data);
+          setAppointments(result.data);
+        } else {
+          setError(result.message || 'Error al cargar las citas');
+        }
         setLoading(false);
-      });
+      };
+      
+      fetchAppointments();
+      
+      // Retornamos una función de limpieza vacía ya que no hay un listener que desuscribir
+      return () => {};
 
-      return () => unsubscribe();
     } catch (err) {
       console.error('Error al cargar citas del profesional:', err);
       setError('Error al cargar las citas');

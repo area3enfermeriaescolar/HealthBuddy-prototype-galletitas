@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
-import { addAppointment, getAppointmentsByStudent, updateAppointmentStatus } from '../../services/appointmentService';
+import { createAppointment, getStudentAppointments, updateAppointmentStatus } from '../../services/appointmentService';
 import { useAuth } from '../../contexts/AuthContext';
 
 // Paleta de colores consistente con el resto de la aplicación
@@ -14,25 +14,6 @@ const COLORS = {
   success: '#388e3c',     // Color de éxito
   warning: '#f57c00',     // Color de advertencia
 };
-
-// Demo badge inline con los nuevos colores
-const DemoBadge = () => (
-  <div style={{
-    position: 'fixed',
-    top: 10,
-    right: 10,
-    background: COLORS.primary,
-    color: 'white',
-    padding: '4px 12px',
-    borderRadius: 20,
-    fontSize: '0.75rem',
-    fontWeight: 600,
-    letterSpacing: 0.5,
-    zIndex: 1000,
-  }}>
-    DEMO
-  </div>
-);
 
 // Componente para la navegación inferior
 function NavBar({ active, onNavigate }) {
@@ -69,7 +50,7 @@ function NavBar({ active, onNavigate }) {
           }}
         >
           <div style={{ 
-            fontSize: '1.6rem',
+            fontSize: '1.6rem', 
             color: item.id === active ? COLORS.primary : COLORS.textMedium,
           }}>
             {item.icon}
@@ -132,7 +113,7 @@ function StudentAppointmentBooking({ onNavigate }) {
     setError(null);
 
     try {
-      const unsubscribe = getAppointmentsByStudent(currentUser.uid, (appointments) => {
+      const unsubscribe = getStudentAppointments(currentUser.uid, (appointments) => {
         // Formatear las citas para mostrar en la UI
         const formattedAppointments = appointments.map(apt => ({
           id: apt.id,
@@ -229,7 +210,7 @@ function StudentAppointmentBooking({ onNavigate }) {
         createdAt: new Date(),
       };
 
-      await addAppointment(appointmentData);
+      await createAppointment(appointmentData);
       
       setShowConfirmation(false);
       setShowSuccess(true);
@@ -308,7 +289,6 @@ function StudentAppointmentBooking({ onNavigate }) {
       maxWidth: '100%',
       overflowX: 'hidden',
     }}>
-      <DemoBadge />
       
       {/* Cabecera */}
       <div style={{ 
@@ -486,116 +466,68 @@ function StudentAppointmentBooking({ onNavigate }) {
                         </div>
                         <div style={{
                           background: apt.status === 'confirmed' ? '#e8f5e9' : 
-                                     apt.status === 'cancelled' ? '#ffebee' : '#fff8e1',
+                                     apt.status === 'cancelled' ? '#ffebee' :
+                                     '#fffde7',
                           color: apt.status === 'confirmed' ? COLORS.success : 
-                                apt.status === 'cancelled' ? COLORS.error : COLORS.warning,
-                          padding: '0.3rem 0.8rem',
-                          borderRadius: 20,
-                          fontSize: '0.75rem',
+                                 apt.status === 'cancelled' ? COLORS.error :
+                                 COLORS.warning,
+                          padding: '0.3rem 0.6rem',
+                          borderRadius: 8,
+                          fontSize: '0.8rem',
                           fontWeight: 600,
-                          alignSelf: isMobile ? 'flex-start' : 'center',
+                          textTransform: 'uppercase',
                         }}>
-                          {apt.status === 'confirmed' ? 'Confirmada' : 
-                           apt.status === 'cancelled' ? 'Cancelada' : 'Pendiente'}
+                          {apt.status === 'pending' ? 'Pendiente' : 
+                           apt.status === 'confirmed' ? 'Confirmada' : 
+                           'Cancelada'}
                         </div>
                       </div>
-                      
-                      {/* Profesional y ubicación */}
-                      <div style={{ fontSize: '0.9rem', color: COLORS.textMedium }}>
+                      <p style={{ 
+                        margin: '0 0 0.5rem 0', 
+                        color: COLORS.textMedium, 
+                        fontSize: '0.9rem' 
+                      }}>
+                        Con {apt.with} ({apt.role})
+                      </p>
+                      <p style={{ 
+                        margin: '0 0 0.5rem 0', 
+                        color: COLORS.textMedium, 
+                        fontSize: '0.9rem' 
+                      }}>
+                        Ubicación: {apt.location}
+                      </p>
+                      {apt.notes && (
                         <p style={{ 
-                          margin: '0.5rem 0 0.2rem 0',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
+                          margin: '0 0 0.5rem 0', 
+                          color: COLORS.textMedium, 
+                          fontSize: '0.9rem', 
+                          fontStyle: 'italic' 
                         }}>
-                          <span style={{ fontSize: '0.9rem' }}>👩‍⚕️</span>
-                          <span>{apt.with} - {apt.role}</span>
+                          Notas: {apt.notes}
                         </p>
-                        <p style={{ 
-                          margin: '0.2rem 0 0 0',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 6,
-                        }}>
-                          <span style={{ fontSize: '0.9rem' }}>📍</span>
-                          <span>{apt.location}</span>
-                        </p>
-                        {apt.notes && (
-                          <p style={{ 
-                            margin: '0.2rem 0 0 0',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            fontStyle: 'italic',
-                          }}>
-                            <span style={{ fontSize: '0.9rem' }}>💬</span>
-                            <span>"{apt.notes}"</span>
-                          </p>
-                        )}
-                      </div>
+                      )}
+                      {apt.status === 'pending' && (
+                        <button
+                          onClick={() => handleCancelAppointment(apt.id)}
+                          style={{
+                            background: 'transparent',
+                            border: `1px solid ${COLORS.error}`,
+                            color: COLORS.error,
+                            padding: '0.5rem 1rem',
+                            borderRadius: 8,
+                            cursor: 'pointer',
+                            fontSize: '0.85rem',
+                            fontWeight: 600,
+                            marginTop: '0.5rem',
+                          }}
+                        >
+                          Cancelar Cita
+                        </button>
+                      )}
                     </div>
                   </div>
-                  
-                  {/* Botones de acción */}
-                  {apt.status === 'pending' && (
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'flex-end', 
-                      marginTop: '1rem',
-                      gap: '0.8rem',
-                    }}>
-                      <button 
-                        onClick={() => handleCancelAppointment(apt.id)}
-                        style={{
-                          background: 'rgba(211, 47, 47, 0.1)',
-                          color: COLORS.error,
-                          border: 'none',
-                          borderRadius: 8,
-                          padding: '0.6rem 1rem',
-                          fontSize: '0.85rem',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Cancelar
-                      </button>
-                      <button 
-                        onClick={() => onNavigate('chat')}
-                        style={{
-                          background: COLORS.primary,
-                          color: 'white',
-                          border: 'none',
-                          borderRadius: 8,
-                          padding: '0.6rem 1rem',
-                          fontSize: '0.85rem',
-                          fontWeight: 500,
-                          cursor: 'pointer',
-                        }}
-                      >
-                        Consultar
-                      </button>
-                    </div>
-                  )}
                 </div>
               ))}
-              
-              <button
-                onClick={() => setActiveTab('book')}
-                style={{
-                  width: '100%',
-                  background: 'transparent',
-                  border: `2px dashed ${COLORS.primary}`,
-                  color: COLORS.primary,
-                  padding: '0.8rem',
-                  borderRadius: 12,
-                  fontSize: '0.95rem',
-                  fontWeight: 500,
-                  cursor: 'pointer',
-                  marginTop: '1rem',
-                }}
-              >
-                + Solicitar nueva cita
-              </button>
             </div>
           ) : (
             <div style={{
@@ -605,540 +537,258 @@ function StudentAppointmentBooking({ onNavigate }) {
               textAlign: 'center',
               boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
             }}>
-              <div style={{ fontSize: '3rem', marginBottom: '1rem', color: COLORS.primary }}>📅</div>
-              <h3 style={{ margin: '0 0 0.5rem 0', color: COLORS.textDark }}>
-                No tienes citas programadas
-              </h3>
-              <p style={{ margin: '0 0 1.5rem 0', color: COLORS.textMedium }}>
-                Solicita tu primera cita con el personal sanitario escolar
-              </p>
-              <button
-                onClick={() => setActiveTab('book')}
+              <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>🗓️</div>
+              <p style={{ color: COLORS.textMedium }}>No tienes citas programadas.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Panel de Solicitar Cita */}
+      {activeTab === 'book' && (
+        <div style={{ marginBottom: '1.5rem' }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 12,
+            padding: '1.5rem',
+            boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
+          }}>
+            <h3 style={{ 
+              color: COLORS.textDark, 
+              fontSize: '1.1rem', 
+              marginBottom: '1rem' 
+            }}>
+              Selecciona una fecha y hora
+            </h3>
+            
+            {/* Navegación de semana */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '1rem',
+            }}>
+              <button 
+                onClick={() => setWeekOffset(prev => prev - 1)}
                 style={{
                   background: COLORS.primary,
                   color: 'white',
                   border: 'none',
-                  borderRadius: 50,
-                  padding: '0.8rem 2rem',
-                  fontSize: '1rem',
-                  fontWeight: 500,
+                  borderRadius: '50%',
+                  width: 30,
+                  height: 30,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   cursor: 'pointer',
+                  fontSize: '1.2rem',
                 }}
-              >
-                Solicitar cita
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Panel de Solicitud de Cita */}
-      {activeTab === 'book' && !showConfirmation && (
-        <div style={{ marginBottom: '1.5rem' }}>
-          {/* Información sobre la consulta joven */}
-          <div style={{
-            background: 'white',
-            borderRadius: 12,
-            padding: '1rem',
-            marginBottom: '1rem',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
-            borderLeft: `4px solid ${COLORS.primary}`,
-          }}>
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'flex-start',
-              gap: 12,
-            }}>
-              <div style={{
-                fontSize: '1.5rem',
-                color: COLORS.primary,
+              >←</button>
+              <span style={{ 
+                color: COLORS.textDark, 
+                fontWeight: 600,
+                fontSize: '0.95rem',
               }}>
-                ℹ️
-              </div>
-              <div>
-                <h3 style={{ 
-                  margin: '0 0 0.5rem 0', 
-                  color: COLORS.primary,
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                }}>
-                  Consulta Joven
-                </h3>
-                <p style={{ 
-                  margin: '0 0 0.3rem 0', 
-                  fontSize: '0.9rem',
-                  color: COLORS.textMedium,
-                }}>
-                  <strong>Personal:</strong> Lucía Martínez (Enfermera Escolar)
-                </p>
-                <p style={{ 
-                  margin: '0 0 0.3rem 0', 
-                  fontSize: '0.9rem',
-                  color: COLORS.textMedium,
-                }}>
-                  <strong>Horario:</strong> Martes y Jueves, 10:00 - 11:00
-                </p>
-                <p style={{ 
-                  margin: '0', 
-                  fontSize: '0.9rem',
-                  color: COLORS.textMedium,
-                }}>
-                  <strong>Ubicación:</strong> Sala 12, junto a Orientación
-                </p>
-              </div>
-            </div>
-          </div>
-          
-          {/* Selección de fecha */}
-          <div style={{
-            background: 'white',
-            borderRadius: 12,
-            padding: '1rem',
-            marginBottom: '1rem',
-            boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
-          }}>
-            <h3 style={{ 
-              margin: '0 0 1rem 0', 
-              color: COLORS.textDark,
-              fontSize: '1rem',
-              fontWeight: 600,
-            }}>
-              Selecciona fecha y hora
-            </h3>
-            
-            {/* Navegación de semanas */}
-            <div style={{ 
-              display: 'flex', 
-              justifyContent: 'space-between',
-              marginBottom: '1rem',
-            }}>
+                {formatDate(availableDates[0])} - {formatDate(availableDates[availableDates.length - 1])}
+              </span>
               <button 
-                onClick={() => setWeekOffset(Math.max(0, weekOffset - 1))}
-                disabled={weekOffset === 0}
+                onClick={() => setWeekOffset(prev => prev + 1)}
                 style={{
-                  background: weekOffset === 0 ? '#f5f5f5' : COLORS.lightBg,
-                  color: weekOffset === 0 ? '#aaa' : COLORS.textMedium,
+                  background: COLORS.primary,
+                  color: 'white',
                   border: 'none',
-                  borderRadius: 8,
-                  padding: '0.6rem',
-                  fontSize: isMobile ? '0.75rem' : '0.85rem',
-                  fontWeight: 500,
-                  cursor: weekOffset === 0 ? 'not-allowed' : 'pointer',
-                  flex: 1,
-                  marginRight: '0.5rem',
-                }}
-              >
-                {isMobile ? '← Anterior' : '← Semana anterior'}
-              </button>
-              <button 
-                onClick={() => setWeekOffset(weekOffset + 1)}
-                style={{
-                  background: COLORS.lightBg,
-                  color: COLORS.textMedium,
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '0.6rem',
-                  fontSize: isMobile ? '0.75rem' : '0.85rem',
-                  fontWeight: 500,
+                  borderRadius: '50%',
+                  width: 30,
+                  height: 30,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
                   cursor: 'pointer',
-                  flex: 1,
-                  marginLeft: '0.5rem',
+                  fontSize: '1.2rem',
                 }}
-              >
-                {isMobile ? 'Siguiente →' : 'Semana siguiente →'}
-              </button>
+              >→</button>
             </div>
-            
+
             {/* Días disponibles */}
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column',
-              gap: '1rem',
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)',
+              gap: '0.75rem',
+              marginBottom: '1.5rem',
             }}>
-              {availableDates.map((date, dateIndex) => (
-                <div key={dateIndex} style={{ marginBottom: '1rem' }}>
+              {availableDates.map((date) => (
+                <div key={date.toISOString()} style={{
+                  background: COLORS.lightBg,
+                  borderRadius: 8,
+                  padding: '0.75rem',
+                  textAlign: 'center',
+                  border: selectedSlot?.date?.toISOString() === date.toISOString() ? `2px solid ${COLORS.primary}` : '1px solid #eee',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}>
                   <h4 style={{ 
-                    margin: '0 0 0.8rem 0', 
-                    color: COLORS.textDark,
-                    fontSize: '0.9rem',
-                    fontWeight: 600,
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
+                    margin: '0 0 0.5rem 0', 
+                    color: COLORS.textDark, 
+                    fontSize: '0.9rem' 
                   }}>
-                    <span style={{ color: COLORS.primary }}>📅</span>
                     {formatDate(date)}
                   </h4>
-                  
-                  <div style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: isMobile ? '1fr' : 'repeat(2, 1fr)', 
-                    gap: '0.8rem',
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, 1fr)',
+                    gap: '0.5rem',
                   }}>
-                    {timeSlots.map((time, timeIndex) => {
-                      const isSelected = selectedSlot && 
-                        selectedSlot.date.getTime() === date.getTime() && 
-                        selectedSlot.time === time;
-                      
-                      // Simulamos que algunos slots están ocupados
-                      const isUnavailable = (dateIndex === 0 && timeIndex === 2) || 
-                                         (dateIndex === 1 && timeIndex === 0);
-                      
-                      return (
-                        <div 
-                          key={`${dateIndex}-${timeIndex}`}
-                          onClick={() => !isUnavailable && handleSelectSlot(date, time)}
-                          style={{
-                            background: isUnavailable ? '#f5f5f5' : 
-                                      isSelected ? COLORS.primary : COLORS.lightBg,
-                            color: isUnavailable ? '#aaa' : 
-                                  isSelected ? 'white' : COLORS.textDark,
-                            padding: '0.8rem',
-                            borderRadius: 8,
-                            textAlign: 'center',
-                            cursor: isUnavailable ? 'not-allowed' : 'pointer',
-                            position: 'relative',
-                            fontWeight: isSelected ? 500 : 'normal',
-                            fontSize: '0.9rem',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            alignItems: 'center',
-                          }}
-                        >
-                          <span>{time}</span>
-                          {isUnavailable && (
-                            <span style={{ 
-                              fontSize: '0.75rem',
-                              color: '#aaa', 
-                            }}>
-                              Ocupado
-                            </span>
-                          )}
-                        </div>
-                      );
-                    })}
+                    {timeSlots.map((slot) => (
+                      <button
+                        key={slot}
+                        onClick={() => handleSelectSlot(date, slot)}
+                        style={{
+                          background: selectedSlot?.date?.toISOString() === date.toISOString() && selectedSlot?.time === slot ? COLORS.primary : 'white',
+                          color: selectedSlot?.date?.toISOString() === date.toISOString() && selectedSlot?.time === slot ? 'white' : COLORS.textMedium,
+                          border: `1px solid ${COLORS.primary}`,
+                          borderRadius: 6,
+                          padding: '0.4rem 0.6rem',
+                          fontSize: '0.8rem',
+                          cursor: 'pointer',
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {slot}
+                      </button>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
-          </div>
-          
-          {/* Selección de motivo si hay slot seleccionado */}
-          {selectedSlot && (
-            <div style={{
-              background: 'white',
-              borderRadius: 12,
-              padding: '1rem',
-              marginBottom: '1rem',
-              boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
-            }}>
-              <h3 style={{ 
-                margin: '0 0 1rem 0', 
-                color: COLORS.textDark,
-                fontSize: '1rem',
-                fontWeight: 600,
-              }}>
-                Información de la cita
-              </h3>
-              
-              <div style={{ marginBottom: '1rem' }}>
-                <label style={{ 
-                  display: 'block', 
-                  marginBottom: '0.5rem',
-                  color: COLORS.textDark,
-                  fontSize: '0.9rem',
-                  fontWeight: 500,
-                }}>
-                  Motivo de la consulta <span style={{ color: COLORS.error }}>*</span>
-                </label>
-                <select 
-                  value={appointmentReason}
-                  onChange={(e) => setAppointmentReason(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.8rem',
-                    borderRadius: 8,
-                    border: `1px solid ${COLORS.lightBg}`,
-                    backgroundColor: 'white',
-                    fontSize: '0.9rem',
-                    color: COLORS.textDark,
-                  }}
-                >
-                  <option value="">Seleccionar motivo</option>
-                  {reasonOptions.map(option => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              
-              <div style={{ marginBottom: '1.5rem' }}>
-                <label style={{ 
-                  display: 'block', 
-                  marginBottom: '0.5rem',
-                  color: COLORS.textDark,
-                  fontSize: '0.9rem',
-                  fontWeight: 500,
-                }}>
-                  Notas adicionales (opcional)
-                </label>
-                <textarea 
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="¿Hay algo más que quieras comentar?"
-                  style={{
-                    width: '100%',
-                    padding: '0.8rem',
-                    borderRadius: 8,
-                    border: `1px solid ${COLORS.lightBg}`,
-                    backgroundColor: 'white',
-                    fontSize: '0.9rem',
-                    color: COLORS.textDark,
-                    minHeight: 80,
-                    resize: 'vertical',
-                  }}
-                />
-              </div>
-              
-              <div style={{ 
-                background: '#f9f9f9', 
-                borderRadius: 8, 
-                padding: '1rem',
-                marginBottom: '1.5rem',
-                fontSize: '0.85rem',
-                color: COLORS.textMedium,
-                display: 'flex',
-                alignItems: 'flex-start',
-                gap: 8,
-              }}>
-                <span style={{ fontSize: '1.2rem' }}>🔒</span>
-                <p style={{ margin: 0 }}>
-                  Esta información es confidencial y solo será vista por el personal sanitario.
-                </p>
-              </div>
-              
-              <button
-                onClick={handleBookAppointment}
-                disabled={!appointmentReason || submitting}
-                style={{
-                  width: '100%',
-                  background: (appointmentReason && !submitting) ? COLORS.primary : '#f5f5f5',
-                  color: (appointmentReason && !submitting) ? 'white' : '#aaa',
-                  border: 'none',
-                  borderRadius: 50,
-                  padding: '0.8rem',
-                  fontSize: '1rem',
-                  fontWeight: 500,
-                  cursor: (appointmentReason && !submitting) ? 'pointer' : 'not-allowed',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                }}
-              >
-                {submitting ? (
-                  <>
-                    <span>⏳</span> Enviando...
-                  </>
-                ) : (
-                  'Solicitar cita'
-                )}
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Pantalla de confirmación */}
-      {showConfirmation && (
-        <div style={{
-          background: 'white',
-          borderRadius: 12,
-          padding: '1.5rem',
-          marginBottom: '1.5rem',
-          boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
-        }}>
-          <h3 style={{ 
-            margin: '0 0 1.5rem 0', 
-            color: COLORS.textDark,
-            fontSize: '1.2rem',
-            fontWeight: 600,
-            textAlign: 'center',
-          }}>
-            Confirmar solicitud de cita
-          </h3>
-          
-          <div style={{
-            background: COLORS.lightBg,
-            borderRadius: 12,
-            padding: '1rem',
-            marginBottom: '1.5rem',
-          }}>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 12,
-              marginBottom: '1rem',
-            }}>
-              <div style={{
-                fontSize: '1.5rem',
-                color: COLORS.primary,
-              }}>
-                📅
-              </div>
-              <div>
-                <h4 style={{ 
-                  margin: 0, 
-                  color: COLORS.textDark,
-                  fontSize: '1rem',
-                  fontWeight: 600,
+
+            {/* Formulario de motivo y notas */}
+            {selectedSlot && (
+              <div style={{ marginTop: '1.5rem' }}>
+                <h3 style={{ 
+                  color: COLORS.textDark, 
+                  fontSize: '1.1rem', 
+                  marginBottom: '1rem' 
                 }}>
                   Detalles de la cita
-                </h4>
-                <p style={{ 
-                  margin: '0.2rem 0 0 0', 
-                  color: COLORS.textMedium,
-                  fontSize: '0.9rem',
-                }}>
-                  Revisa los datos antes de confirmar
-                </p>
-              </div>
-            </div>
-            
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.5rem',
-              marginBottom: '1.5rem',
-              fontSize: '0.9rem',
-            }}>
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between',
-                padding: '0.8rem',
-                background: 'white',
-                borderRadius: 8,
-                flexDirection: isMobile ? 'column' : 'row',
-              }}>
-                <span style={{ 
-                  fontWeight: 500, 
-                  color: COLORS.textDark,
-                  marginBottom: isMobile ? '0.3rem' : 0
-                }}>Fecha:</span>
-                <span style={{ color: COLORS.textMedium }}>{formatDate(selectedSlot.date)}</span>
-              </div>
-              
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between',
-                padding: '0.8rem',
-                background: 'white',
-                borderRadius: 8,
-                flexDirection: isMobile ? 'column' : 'row',
-              }}>
-                <span style={{ 
-                  fontWeight: 500, 
-                  color: COLORS.textDark,
-                  marginBottom: isMobile ? '0.3rem' : 0
-                }}>Hora:</span>
-                <span style={{ color: COLORS.textMedium }}>{selectedSlot.time}</span>
-              </div>
-              
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between',
-                padding: '0.8rem',
-                background: 'white',
-                borderRadius: 8,
-                flexDirection: isMobile ? 'column' : 'row',
-              }}>
-                <span style={{ 
-                  fontWeight: 500, 
-                  color: COLORS.textDark,
-                  marginBottom: isMobile ? '0.3rem' : 0
-                }}>Profesional:</span>
-                <span style={{ color: COLORS.textMedium }}>Lucía Martínez</span>
-              </div>
-              
-              <div style={{ 
-                display: 'flex', 
-                justifyContent: 'space-between',
-                padding: '0.8rem',
-                background: 'white',
-                borderRadius: 8,
-                flexDirection: isMobile ? 'column' : 'row',
-              }}>
-                <span style={{ 
-                  fontWeight: 500, 
-                  color: COLORS.textDark,
-                  marginBottom: isMobile ? '0.3rem' : 0
-                }}>Motivo:</span>
-                <span style={{ color: COLORS.textMedium }}>
-                  {reasonOptions.find(opt => opt.value === appointmentReason)?.label || appointmentReason}
-                </span>
-              </div>
-              
-              {notes && (
-                <div style={{ 
-                  padding: '0.8rem',
-                  background: 'white',
-                  borderRadius: 8,
-                }}>
-                  <span style={{ fontWeight: 500, color: COLORS.textDark, display: 'block', marginBottom: '0.5rem' }}>
-                    Notas adicionales:
-                  </span>
-                  <p style={{ 
-                    margin: 0, 
-                    color: COLORS.textMedium,
-                    fontSize: '0.85rem',
-                    fontStyle: 'italic',
-                  }}>
-                    "{notes}"
-                  </p>
+                </h3>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    color: COLORS.textDark, 
+                    fontWeight: 500 
+                  }}>Motivo de la cita:</label>
+                  <select
+                    value={appointmentReason}
+                    onChange={(e) => setAppointmentReason(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem',
+                      borderRadius: 8,
+                      border: '1px solid #ccc',
+                      fontSize: '0.9rem',
+                    }}
+                  >
+                    <option value="">Selecciona un motivo</option>
+                    {reasonOptions.map(option => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-              )}
-            </div>
-            
-            <div style={{ 
-              background: '#fff8e1', 
-              borderRadius: 8, 
-              padding: '1rem',
-              marginBottom: '1.5rem',
-              fontSize: '0.85rem',
-              color: COLORS.warning,
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 8,
-              borderLeft: `4px solid ${COLORS.warning}`,
-            }}>
-              <span style={{ fontSize: '1.2rem' }}>⚠️</span>
-              <p style={{ margin: 0 }}>
-                Esta solicitud está sujeta a confirmación por parte del personal sanitario.
-                Recibirás una notificación cuando sea aprobada.
-              </p>
-            </div>
-            
-            <div style={{ 
-              display: 'flex', 
-              gap: '1rem',
-              flexDirection: isMobile ? 'column' : 'row',
-            }}>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '0.5rem', 
+                    color: COLORS.textDark, 
+                    fontWeight: 500 
+                  }}>Notas adicionales (opcional):</label>
+                  <textarea
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="¿Hay algo más que debamos saber?"
+                    rows="3"
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem',
+                      borderRadius: 8,
+                      border: '1px solid #ccc',
+                      fontSize: '0.9rem',
+                      resize: 'vertical',
+                    }}
+                  ></textarea>
+                </div>
+                <button
+                  onClick={handleBookAppointment}
+                  disabled={!appointmentReason || submitting}
+                  style={{
+                    background: COLORS.primary,
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: 8,
+                    padding: '0.8rem 1.5rem',
+                    fontSize: '1rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    width: '100%',
+                    opacity: submitting ? 0.7 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                >
+                  {submitting ? 'Solicitando...' : 'Solicitar Cita'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Confirmación de Cita */}
+      {showConfirmation && selectedSlot && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000,
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: 12,
+            padding: '2rem',
+            textAlign: 'center',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+            maxWidth: isMobile ? '90%' : '400px',
+          }}>
+            <h3 style={{ color: COLORS.textDark, marginBottom: '1rem' }}>Confirmar Cita</h3>
+            <p style={{ color: COLORS.textMedium, marginBottom: '0.5rem' }}>
+              Fecha: <strong>{formatDate(selectedSlot.date)}</strong>
+            </p>
+            <p style={{ color: COLORS.textMedium, marginBottom: '0.5rem' }}>
+              Hora: <strong>{selectedSlot.time}</strong>
+            </p>
+            <p style={{ color: COLORS.textMedium, marginBottom: '1.5rem' }}>
+              Motivo: <strong>{reasonOptions.find(opt => opt.value === appointmentReason)?.label || appointmentReason}</strong>
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-around', gap: '1rem' }}>
               <button
                 onClick={() => setShowConfirmation(false)}
-                disabled={submitting}
                 style={{
-                  flex: 1,
-                  background: '#f5f5f5',
+                  background: 'transparent',
+                  border: `1px solid ${COLORS.textMedium}`,
                   color: COLORS.textMedium,
-                  border: 'none',
-                  borderRadius: 50,
-                  padding: '0.8rem',
-                  fontSize: '1rem',
-                  fontWeight: 500,
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                  order: isMobile ? 2 : 1,
-                  opacity: submitting ? 0.5 : 1,
+                  padding: '0.6rem 1.2rem',
+                  borderRadius: 8,
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  flex: 1,
                 }}
               >
                 Cancelar
@@ -1147,39 +797,30 @@ function StudentAppointmentBooking({ onNavigate }) {
                 onClick={confirmAppointment}
                 disabled={submitting}
                 style={{
-                  flex: 1,
-                  background: submitting ? '#ccc' : COLORS.primary,
+                  background: COLORS.primary,
                   color: 'white',
                   border: 'none',
-                  borderRadius: 50,
-                  padding: '0.8rem',
-                  fontSize: '1rem',
-                  fontWeight: 500,
-                  cursor: submitting ? 'not-allowed' : 'pointer',
-                  order: isMobile ? 1 : 2,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
+                  borderRadius: 8,
+                  padding: '0.6rem 1.2rem',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  flex: 1,
+                  opacity: submitting ? 0.7 : 1,
                 }}
               >
-                {submitting ? (
-                  <>
-                    <span>⏳</span> Confirmando...
-                  </>
-                ) : (
-                  'Confirmar'
-                )}
+                {submitting ? 'Confirmando...' : 'Confirmar'}
               </button>
             </div>
           </div>
         </div>
       )}
       
-      {/* NavBar en la parte inferior */}
       <NavBar active="appointments" onNavigate={onNavigate} />
     </div>
   );
 }
 
 export default StudentAppointmentBooking;
+
+
