@@ -4,9 +4,10 @@ import {
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
-  updateProfile
+  updateProfile,
+  onAuthStateChanged as firebaseOnAuthStateChanged
 } from 'firebase/auth';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 
 /**
@@ -26,14 +27,39 @@ export const registerStudent = async (email, password, userData) => {
       };
     }
     
+    // Validar formato del NRE
+    const nre = email.split('@')[0];
+    if (!/^\d{8}[A-Z]$/.test(nre)) {
+      return {
+        success: false,
+        error: 'El NRE debe tener 7 dígitos'
+      };
+    }
+    
     // Crear usuario en Firebase Auth
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const user = userCredential.user;
     
-    // Extraer NRE del correo
-    const nre = email.split('@')[0];
-    
     // Guardar datos adicionales en Firestore
+    await setDoc(doc(db, "users", user.uid), {
+      userType: 'student',
+      nre,
+      alias: userData.alias || '',
+      centerIds: userData.centerIds || [],
+      course: userData.course || '',
+      age: userData.age || null,
+      gender: userData.gender || '',
+      educationalCenter: userData.centroEducativo || '',
+      email: email,
+      createdAt: serverTimestamp(),
+      lastLogin: serverTimestamp(),
+      settings: userData.settings || {
+        notifications: true,
+        language: 'es'
+      }
+    });
+    
+    // También guardar en la subcolección students para compatibilidad
     await setDoc(doc(db, "users", "students", user.uid), {
       nre,
       alias: userData.alias || '',
@@ -41,8 +67,9 @@ export const registerStudent = async (email, password, userData) => {
       course: userData.course || '',
       age: userData.age || null,
       gender: userData.gender || '',
-      createdAt: new Date(),
-      lastLogin: new Date(),
+      educationalCenter: userData.centroEducativo || '',
+      createdAt: serverTimestamp(),
+      lastLogin: serverTimestamp(),
       settings: userData.settings || {
         notifications: true,
         language: 'es'
@@ -54,7 +81,7 @@ export const registerStudent = async (email, password, userData) => {
       displayName: userData.alias || nre
     });
     
-    return { success: true, user };
+    return { success: true, user, userType: 'student' };
   } catch (error) {
     console.error("Error en registro de estudiante:", error);
     
@@ -63,6 +90,10 @@ export const registerStudent = async (email, password, userData) => {
       return { success: false, error: 'Este correo ya está registrado' };
     } else if (error.code === 'auth/weak-password') {
       return { success: false, error: 'La contraseña debe tener al menos 6 caracteres' };
+    } else if (error.code === 'auth/invalid-email') {
+      return { success: false, error: 'El formato del correo electrónico no es válido' };
+    } else if (error.code === 'auth/operation-not-allowed') {
+      return { success: false, error: 'El registro de usuarios no está habilitado' };
     }
     
     return { success: false, error: error.message };
@@ -91,14 +122,40 @@ export const registerProfessional = async (email, password, userData) => {
     const user = userCredential.user;
     
     // Guardar datos adicionales en Firestore
-    await setDoc(doc(db, "users", "professionals", user.uid), {
+    await setDoc(doc(db, "users", user.uid), {
+      userType: 'professional',
       email,
-      name: userData.name || '',
+      name: userData.nombre || '',
+      lastName: userData.apellidos || '',
+      fullName: `${userData.nombre || ''} ${userData.apellidos || ''}`.trim(),
       role: userData.role || 'nurse',
+      healthArea: userData.areaSalud || '',
+      healthCenter: userData.centroSalud || '',
+      educationalCenters: userData.centrosEducativos || [],
       centerIds: userData.centerIds || [],
       availability: userData.availability || {},
-      createdAt: new Date(),
-      lastLogin: new Date(),
+      createdAt: serverTimestamp(),
+      lastLogin: serverTimestamp(),
+      settings: userData.settings || {
+        notifications: true,
+        language: 'es'
+      }
+    });
+    
+    // También guardar en la subcolección professionals para compatibilidad
+    await setDoc(doc(db, "users", "professionals", user.uid), {
+      email,
+      name: userData.nombre || '',
+      lastName: userData.apellidos || '',
+      fullName: `${userData.nombre || ''} ${userData.apellidos || ''}`.trim(),
+      role: userData.role || 'nurse',
+      healthArea: userData.areaSalud || '',
+      healthCenter: userData.centroSalud || '',
+      educationalCenters: userData.centrosEducativos || [],
+      centerIds: userData.centerIds || [],
+      availability: userData.availability || {},
+      createdAt: serverTimestamp(),
+      lastLogin: serverTimestamp(),
       settings: userData.settings || {
         notifications: true,
         language: 'es'
@@ -107,16 +164,20 @@ export const registerProfessional = async (email, password, userData) => {
     
     // Actualizar perfil en Auth
     await updateProfile(user, {
-      displayName: userData.name || email.split('@')[0]
+      displayName: `${userData.nombre || ''} ${userData.apellidos || ''}`.trim() || email.split('@')[0]
     });
     
-    return { success: true, user };
+    return { success: true, user, userType: 'professional' };
   } catch (error) {
     console.error("Error en registro de profesional:", error);
     
     // Manejar errores específicos
     if (error.code === 'auth/email-already-in-use') {
       return { success: false, error: 'Este correo ya está registrado' };
+    } else if (error.code === 'auth/weak-password') {
+      return { success: false, error: 'La contraseña debe tener al menos 8 caracteres' };
+    } else if (error.code === 'auth/invalid-email') {
+      return { success: false, error: 'El formato del correo electrónico no es válido' };
     }
     
     return { success: false, error: error.message };
@@ -139,26 +200,43 @@ export const loginUser = async (email, password) => {
     
     // Actualizar último login
     if (userType.success) {
+      // Actualizar en la colección principal
+      await setDoc(doc(db, "users", user.uid), {
+        lastLogin: serverTimestamp()
+      }, { merge: true });
+      
+      // Actualizar en la subcolección correspondiente para compatibilidad
       const collectionPath = userType.role === 'student' ? 'users/students' : 'users/professionals';
       await setDoc(doc(db, collectionPath, user.uid), {
-        lastLogin: new Date()
+        lastLogin: serverTimestamp()
       }, { merge: true });
     }
     
     return { 
       success: true, 
       user,
-      userType: userType.success ? userType.role : null
+      userType: userType.success ? userType.role : null,
+      userData: userType.success ? userType.data : null
     };
   } catch (error) {
     console.error("Error en inicio de sesión:", error);
     
     // Manejar errores específicos
-    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-      return { success: false, error: 'Credenciales incorrectas' };
+    if (error.code === 'auth/user-not-found') {
+      return { success: false, error: 'No existe una cuenta con este correo electrónico' };
+    } else if (error.code === 'auth/wrong-password') {
+      return { success: false, error: 'La contraseña es incorrecta' };
+    } else if (error.code === 'auth/invalid-email') {
+      return { success: false, error: 'El formato del correo electrónico no es válido' };
+    } else if (error.code === 'auth/user-disabled') {
+      return { success: false, error: 'Esta cuenta ha sido deshabilitada' };
+    } else if (error.code === 'auth/too-many-requests') {
+      return { success: false, error: 'Demasiados intentos fallidos. Inténtalo más tarde' };
+    } else if (error.code === 'auth/invalid-credential') {
+      return { success: false, error: 'Las credenciales proporcionadas son incorrectas' };
     }
     
-    return { success: false, error: error.message };
+    return { success: false, error: 'Error al iniciar sesión. Verifica tus credenciales' };
   }
 };
 
@@ -194,6 +272,10 @@ export const resetPassword = async (email) => {
     // Manejar errores específicos
     if (error.code === 'auth/user-not-found') {
       return { success: false, error: 'No existe una cuenta con este correo' };
+    } else if (error.code === 'auth/invalid-email') {
+      return { success: false, error: 'El formato del correo electrónico no es válido' };
+    } else if (error.code === 'auth/too-many-requests') {
+      return { success: false, error: 'Demasiados intentos. Inténtalo más tarde' };
     }
     
     return { success: false, error: error.message };
@@ -207,7 +289,18 @@ export const resetPassword = async (email) => {
  */
 export const getUserRole = async (userId) => {
   try {
-    // Intentar encontrar al usuario en la colección de estudiantes
+    // Primero intentar obtener desde la colección principal
+    const userDoc = await getDoc(doc(db, "users", userId));
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      return { 
+        success: true, 
+        role: userData.userType, 
+        data: userData 
+      };
+    }
+    
+    // Si no existe en la colección principal, intentar en las subcolecciones (compatibilidad)
     const studentDoc = await getDoc(doc(db, "users", "students", userId));
     if (studentDoc.exists()) {
       return { 
@@ -217,7 +310,6 @@ export const getUserRole = async (userId) => {
       };
     }
     
-    // Intentar encontrar al usuario en la colección de profesionales
     const professionalDoc = await getDoc(doc(db, "users", "professionals", userId));
     if (professionalDoc.exists()) {
       return { 
@@ -227,9 +319,47 @@ export const getUserRole = async (userId) => {
       };
     }
     
-    return { success: false, error: "Usuario no encontrado" };
+    return { success: false, error: "Usuario no encontrado en la base de datos" };
   } catch (error) {
     console.error("Error al obtener rol de usuario:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Obtener datos completos del usuario actual
+ * @param {string} userId - ID del usuario
+ * @returns {Object} Datos del usuario o null
+ */
+export const getUserData = async (userId) => {
+  try {
+    const userDoc = await getDoc(doc(db, "users", userId));
+    if (userDoc.exists()) {
+      return { success: true, data: userDoc.data() };
+    }
+    return { success: false, error: "Usuario no encontrado" };
+  } catch (error) {
+    console.error("Error al obtener datos de usuario:", error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Actualizar datos del usuario
+ * @param {string} userId - ID del usuario
+ * @param {Object} updateData - Datos a actualizar
+ * @returns {Object} Resultado de la operación
+ */
+export const updateUserData = async (userId, updateData) => {
+  try {
+    await setDoc(doc(db, "users", userId), {
+      ...updateData,
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    
+    return { success: true };
+  } catch (error) {
+    console.error("Error al actualizar datos de usuario:", error);
     return { success: false, error: error.message };
   }
 };
@@ -248,5 +378,42 @@ export const getCurrentUser = () => {
  * @returns {Function} Función para cancelar la suscripción
  */
 export const onAuthStateChanged = (callback) => {
-  return auth.onAuthStateChanged(callback);
+  return firebaseOnAuthStateChanged(auth, callback);
+};
+
+/**
+ * Validar formato de NRE
+ * @param {string} nre - NRE a validar
+ * @returns {boolean} True si es válido
+ */
+export const validateNRE = (nre) => {
+  return /^\d{8}[A-Z]$/.test(nre);
+};
+
+/**
+ * Validar formato de email institucional
+ * @param {string} email - Email a validar
+ * @param {string} domain - Dominio requerido
+ * @returns {boolean} True si es válido
+ */
+export const validateInstitutionalEmail = (email, domain = '@alu.murciaeduca.es') => {
+  return email.endsWith(domain);
+};
+
+/**
+ * Generar email desde NRE
+ * @param {string} nre - NRE del estudiante
+ * @returns {string} Email generado
+ */
+export const generateEmailFromNRE = (nre) => {
+  return `${nre}@alu.murciaeduca.es`;
+};
+
+/**
+ * Extraer NRE desde email
+ * @param {string} email - Email del estudiante
+ * @returns {string} NRE extraído
+ */
+export const extractNREFromEmail = (email) => {
+  return email.split('@')[0];
 };

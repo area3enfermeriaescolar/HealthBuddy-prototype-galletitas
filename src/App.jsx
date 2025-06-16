@@ -1,16 +1,16 @@
-import React, { useState, lazy, Suspense, useEffect } from 'react';
+import React, { useState, useEffect, lazy, Suspense } from 'react';
 // Corregir ruta a ThemeProvider
 import { ThemeProvider } from './components/ThemeProvider';
 // Corregir ruta a CommonComponents
 import { Container, Loader } from './components/common/CommonComponents';
 import './loginForms.css';
 import './globalStyles.css';
-// Importaciones de Firebase
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { logoutUser } from './services/authService';
 
 // Importamos el componente SplashScreen
 import SplashScreen from './components/SplashScreen';
+
+// Servicios de Firebase
+import { onAuthStateChanged, getCurrentUser, getUserRole, logoutUser } from './services/authService';
 
 // Importaciones dinámicas para componentes de estudiante
 const StudentHome = lazy(() => import('./components/student/StudentHome'));
@@ -30,102 +30,120 @@ const ProfessionalStatistics = lazy(() => import('./components/professional/Prof
 const ProfessionalInterconsultation = lazy(() => import('./components/professional/ProfessionalInterconsultation'));
 const ProfessionalResources = lazy(() => import('./components/professional/ProfessionalResources'));
 
-// Componentes de Login actualizados para usar el tema unificado
-import LoginForms from './LoginForms';
+// Componentes de Login actualizados para usar Firebase
+import { StudentLogin, ProfessionalLogin } from './LoginForms';
 
 /**
- * Componente interno de la aplicación que utiliza el contexto de autenticación
+ * Componente principal de la aplicación con autenticación Firebase únicamente
  */
-function AppContent() {
-  const { user, loading: authLoading, userData } = useAuth();
-  
+function App() {
   // Estado para controlar la visibilidad de la splash screen
   const [showSplash, setShowSplash] = useState(true);
+  
+  // Estados de autenticación con Firebase
+  const [user, setUser] = useState(null);
+  const [userType, setUserType] = useState(null);
+  const [userData, setUserData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authInitialized, setAuthInitialized] = useState(false);
+  
+  // Estados de navegación
   const [selectedAccess, setSelectedAccess] = useState(null);
-  const [demoMode, setDemoMode] = useState(false);
   const [activeScreen, setActiveScreen] = useState('home');
   const [activeProfessionalScreen, setActiveProfessionalScreen] = useState('dashboard');
-
-  // Efecto para manejar el estado de autenticación
-  useEffect(() => {
-    if (user && userData && !demoMode) {
-      // Usuario autenticado: determinar tipo de acceso basado en userData
-      const userType = userData.userType || 'student';
-      setSelectedAccess(userType);
-    } else if (!user && !demoMode) {
-      // Usuario no autenticado: resetear estado
-      setSelectedAccess(null);
-      setActiveScreen('home');
-      setActiveProfessionalScreen('dashboard');
-    }
-  }, [user, userData, demoMode]);
 
   // Función para cerrar la pantalla de splash
   const handleCloseSplash = () => {
     setShowSplash(false);
   };
 
-  // Funciones de navegación mejoradas
+  // Efecto para escuchar cambios de autenticación en Firebase
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(async (firebaseUser) => {
+      console.log('Estado de autenticación cambiado:', firebaseUser);
+      
+      if (firebaseUser) {
+        try {
+          // Obtener rol y datos del usuario
+          const roleResult = await getUserRole(firebaseUser.uid);
+          
+          if (roleResult.success) {
+            setUser(firebaseUser);
+            setUserType(roleResult.role);
+            setUserData(roleResult.data);
+            setSelectedAccess(roleResult.role);
+            console.log('Usuario autenticado:', {
+              uid: firebaseUser.uid,
+              email: firebaseUser.email,
+              userType: roleResult.role,
+              userData: roleResult.data
+            });
+          } else {
+            console.error('Error al obtener rol del usuario:', roleResult.error);
+            // Si hay error obteniendo el rol, cerrar sesión
+            await handleLogout();
+          }
+        } catch (error) {
+          console.error('Error al procesar usuario autenticado:', error);
+          await handleLogout();
+        }
+      } else {
+        // Usuario no autenticado
+        setUser(null);
+        setUserType(null);
+        setUserData(null);
+        setSelectedAccess(null);
+      }
+      
+      setLoading(false);
+      setAuthInitialized(true);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // Funciones de navegación
   const handleBack = () => {
-    if (user && !demoMode) {
-      // Si hay usuario autenticado, cerrar sesión
+    if (user) {
+      // Si el usuario está logueado, hacer logout
       handleLogout();
-    } else if (demoMode || selectedAccess) {
-      // Si está en modo demo o ha seleccionado acceso, volver al inicio
-      setDemoMode(false);
+    } else {
+      // Si no está logueado, volver a la pantalla principal
       setSelectedAccess(null);
-      setActiveScreen('home');
-      setActiveProfessionalScreen('dashboard');
     }
   };
 
-  const handleLogin = (userData) => {
-    console.log('Usuario logueado:', userData);
-    // El useEffect se encargará de actualizar selectedAccess cuando user cambie
-    // No necesitamos hacer nada más aquí ya que Firebase maneja el estado
+  const handleLogin = (loginData) => {
+    console.log('Login completado:', loginData);
+    // El estado se actualiza automáticamente gracias al listener de onAuthStateChanged
   };
 
   const handleLogout = async () => {
     try {
+      // Logout de Firebase
       await logoutUser();
-      setDemoMode(false);
+      
+      // Limpiar estados locales
+      setUser(null);
+      setUserType(null);
+      setUserData(null);
       setSelectedAccess(null);
       setActiveScreen('home');
       setActiveProfessionalScreen('dashboard');
-      console.log('Sesión cerrada exitosamente');
+      
+      console.log('Logout completado');
     } catch (error) {
       console.error('Error al cerrar sesión:', error);
-      // En caso de error, forzar el reset del estado local
-      setDemoMode(false);
+      // Forzar limpieza de estados aunque haya error
+      setUser(null);
+      setUserType(null);
+      setUserData(null);
       setSelectedAccess(null);
-      setActiveScreen('home');
-      setActiveProfessionalScreen('dashboard');
     }
   };
 
-  const handleDemoAccess = (userType) => {
-    setSelectedAccess(userType);
-    setDemoMode(true);
-    setActiveScreen('home');
-    setActiveProfessionalScreen('dashboard');
-  };
-
-  const handleAccessSelection = (userType) => {
-    setSelectedAccess(userType);
-    setDemoMode(false);
-  };
-
-  // Determinar si el usuario está "logueado" (autenticado o en modo demo)
-  const isLoggedIn = (user && userData && !demoMode) || demoMode;
-
   // Renderizar pantallas de estudiante con Suspense para carga lazy
   const renderStudentScreen = () => {
-    const commonProps = {
-      onNavigate: setActiveScreen,
-      user: demoMode ? { userType: 'student', alias: 'Demo Student' } : userData,
-      demoMode: demoMode
-    };
-
     return (
       <Suspense fallback={
         <Container style={{ 
@@ -137,23 +155,52 @@ function AppContent() {
           <Loader size="large" />
         </Container>
       }>
-        {activeScreen === 'home' && <StudentHome {...commonProps} />}
-        {activeScreen === 'chat' && <StudentChat {...commonProps} />}
-        {activeScreen === 'appointments' && <StudentAppointmentBooking {...commonProps} />}
-        {activeScreen === 'notifications' && <StudentNotifications {...commonProps} />}
-        {activeScreen === 'resources' && <StudentResources {...commonProps} />}
+        {activeScreen === 'home' && (
+          <StudentHome 
+            onNavigate={setActiveScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeScreen === 'chat' && (
+          <StudentChat 
+            onNavigate={setActiveScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeScreen === 'appointments' && (
+          <StudentAppointmentBooking 
+            onNavigate={setActiveScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeScreen === 'notifications' && (
+          <StudentNotifications 
+            onNavigate={setActiveScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeScreen === 'resources' && (
+          <StudentResources 
+            onNavigate={setActiveScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
       </Suspense>
     );
   };
 
   // Renderizar pantallas de profesional con Suspense para carga lazy
   const renderProfessionalScreen = () => {
-    const commonProps = {
-      onNavigate: setActiveProfessionalScreen,
-      user: demoMode ? { userType: 'professional', nombre: 'Demo', apellidos: 'Professional' } : userData,
-      demoMode: demoMode
-    };
-
     return (
       <Suspense fallback={
         <Container style={{ 
@@ -165,32 +212,96 @@ function AppContent() {
           <Loader size="large" />
         </Container>
       }>
-        {activeProfessionalScreen === 'dashboard' && <ProfessionalDashboard {...commonProps} />}
-        {activeProfessionalScreen === 'availability' && <ProfessionalAvailabilityManagement {...commonProps} />}
-        {activeProfessionalScreen === 'appointments' && <ProfessionalAppointments {...commonProps} />}
-        {activeProfessionalScreen === 'consultation-form' && <ConsultationForm {...commonProps} />}
-        {activeProfessionalScreen === 'centers' && <MyCentersView {...commonProps} />}
-        {activeProfessionalScreen === 'chat' && <ProfessionalChat {...commonProps} />}
-        {activeProfessionalScreen === 'statistics' && <ProfessionalStatistics {...commonProps} />}
-        {activeProfessionalScreen === 'interconsultation' && <ProfessionalInterconsultation {...commonProps} />}
-        {activeProfessionalScreen === 'resources' && <ProfessionalResources {...commonProps} />}
+        {activeProfessionalScreen === 'dashboard' && (
+          <ProfessionalDashboard 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'availability' && (
+          <ProfessionalAvailabilityManagement 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'appointments' && (
+          <ProfessionalAppointments 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'consultation-form' && (
+          <ConsultationForm 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'centers' && (
+          <MyCentersView 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'chat' && (
+          <ProfessionalChat 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'statistics' && (
+          <ProfessionalStatistics 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'interconsultation' && (
+          <ProfessionalInterconsultation 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
+        {activeProfessionalScreen === 'resources' && (
+          <ProfessionalResources 
+            onNavigate={setActiveProfessionalScreen}
+            user={user}
+            userData={userData}
+            onLogout={handleLogout}
+          />
+        )}
       </Suspense>
     );
   };
 
-  // Mostrar loader mientras se inicializa la autenticación
-  if (authLoading) {
+  // Mostrar loading mientras Firebase inicializa
+  if (!authInitialized || loading) {
     return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        backgroundColor: '#f8f9fa'
-      }}>
-        <Loader size="large" />
-        <p style={{ marginLeft: '1rem', color: '#666' }}>Cargando HealthBuddy...</p>
-      </div>
+      <ThemeProvider>
+        <Container style={{ 
+          display: 'flex', 
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          height: '100vh',
+          background: 'linear-gradient(135deg, #5ECCC3 0%, #1E5F8C 100%)'
+        }}>
+          <Loader size="large" />
+        </Container>
+      </ThemeProvider>
     );
   }
 
@@ -200,120 +311,58 @@ function AppContent() {
   }
 
   return (
-    <div className="app-container">
-      {/* Pantalla de selección inicial */}
-      {selectedAccess === null ? (
-        <div className="login-container">
-          <img src="/logo.png" alt="HealthBuddy Logo" className="logo" />
-          <h1 className="app-title">HealthBuddy</h1>
-          <h2 className="app-subtitle">Aplicación de la Consulta Joven del SMS</h2>
-          
-          <div className="access-options">
-            <button 
-              className="access-button" 
-              onClick={() => handleAccessSelection('student')}
-            >
-              <span className="access-icon">👨‍🎓</span> Acceso Estudiante
-            </button>
-            <button 
-              className="access-button professional" 
-              onClick={() => handleAccessSelection('professional')}
-            >
-              <span className="access-icon">👨‍⚕️</span> Acceso Profesional Sanitario
-            </button>
-          </div>
-          
-          <div className="demo-access">
-            <h3>Modo Demostración</h3>
-            <div className="demo-buttons">
-              <button 
-                className="demo-button student" 
-                onClick={() => handleDemoAccess('student')}
-              >
-                <span className="demo-icon">🚀</span> Demo Estudiante
-              </button>
-              <button 
-                className="demo-button professional" 
-                onClick={() => handleDemoAccess('professional')}
-              >
-                <span className="demo-icon">🚀</span> Demo Profesional
-              </button>
+    <ThemeProvider>
+      <div className="app-container">
+        {!user ? (
+          // Pantalla de selección de acceso o login
+          selectedAccess === null ? (
+            <div className="login-container">
+              <img src="/logo.png" alt="HealthBuddy Logo" className="logo" />
+              <h1 className="app-title">HealthBuddy</h1>
+              <h2 className="app-subtitle">Aplicación de la Consulta Joven del SMS</h2>
+              
+              <div className="access-options">
+                <button className="access-button" onClick={() => setSelectedAccess('student')}>
+                  <span className="access-icon">👨‍🎓</span> Acceso Estudiante
+                </button>
+                <button className="access-button professional" onClick={() => setSelectedAccess('professional')}>
+                  <span className="access-icon">👨‍⚕️</span> Acceso Profesional Sanitario
+                </button>
+              </div>
+              
+              <div className="footer">
+                <p>Servicio de comunicación segura entre estudiantes y enfermería escolar</p>
+                <div className="institutional-logos">
+                  <span>Servicio Murciano de Salud</span>
+                  <span>Región de Murcia</span>
+                </div>
+              </div>
             </div>
-          </div>
-          
-          <div className="footer">
-            <p>Servicio de comunicación segura entre estudiantes y enfermería escolar</p>
-            <div className="institutional-logos">
-              <span>Servicio Murciano de Salud</span>
-              <span>Región de Murcia</span>
+          ) : (
+            // Pantalla de login
+            <div className="login-container">
+              <button className="back-button" onClick={handleBack}>← Volver</button>
+              {selectedAccess === 'student' ? (
+                <StudentLogin 
+                  onLogin={handleLogin} 
+                  onBack={handleBack}
+                />
+              ) : (
+                <ProfessionalLogin 
+                  onLogin={handleLogin} 
+                  onBack={handleBack}
+                />
+              )}
             </div>
-          </div>
-        </div>
-      ) 
-      /* Pantalla de login/registro */
-      : !isLoggedIn ? (
-        <div className="login-container">
-          {/* Badge de demo si corresponde */}
-          {demoMode && <div className="demo-badge">DEMO</div>}
-          
-          <LoginForms
-            selectedAccess={selectedAccess}
-            onLogin={handleLogin}
-            onBack={handleBack}
-            onSkipLogin={() => handleDemoAccess(selectedAccess === 'student' ? 'student' : 'professional')}
-            onShowRegistration={() => setSelectedAccess('registration')}
-          />
-        </div>
-      ) 
-      /* Pantallas principales de la aplicación */
-      : (
-        <div className="main-app">
-          {/* Badge de demo si está activo */}
-          {demoMode && <div className="demo-badge">DEMO</div>}
-          
-          {/* Header con información del usuario y logout */}
-          <div className="app-header">
-            <div className="user-info">
-              {demoMode ? (
-                <span className="user-name">
-                  {selectedAccess === 'student' ? 'Demo Student' : 'Demo Professional'}
-                </span>
-              ) : userData ? (
-                <span className="user-name">
-                  {userData.alias || `${userData.nombre} ${userData.apellidos}` || userData.email}
-                </span>
-              ) : null}
-            </div>
-            
-            <button 
-              className="logout-button" 
-              onClick={demoMode ? handleBack : handleLogout}
-              title={demoMode ? "Salir del modo demo" : "Cerrar sesión"}
-            >
-              {demoMode ? "Salir Demo" : "Cerrar Sesión"}
-            </button>
-          </div>
-          
-          {/* Contenido principal */}
-          <div className="app-content">
-            {selectedAccess === 'student' ? renderStudentScreen() : renderProfessionalScreen()}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/**
- * Componente principal de la aplicación con sistema de diseño unificado
- */
-function App() {
-  return (
-    <AuthProvider>
-      <ThemeProvider>
-        <AppContent />
-      </ThemeProvider>
-    </AuthProvider>
+          )
+        ) : (
+          // Usuario autenticado - mostrar aplicación
+          <>
+            {userType === 'student' ? renderStudentScreen() : renderProfessionalScreen()}
+          </>
+        )}
+      </div>
+    </ThemeProvider>
   );
 }
 

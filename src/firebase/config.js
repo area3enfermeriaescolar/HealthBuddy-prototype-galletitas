@@ -2,7 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-// Usar valores directos en lugar de variables de entorno para asegurar la inicialización
+// Usar valores directos en lugar de variables de entorno
 const firebaseConfig = {
   apiKey: "AIzaSyDDdyGFdOdRWTlMWBzBByfzc39OY2mtZTo",
   authDomain: "healthbuddy-881bd.firebaseapp.com",
@@ -14,7 +14,7 @@ const firebaseConfig = {
   measurementId: "G-W82WSQHQCB"
 };
 
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(firebaseConfig );
 const auth = getAuth(app);
 const db = getFirestore(app);
 
